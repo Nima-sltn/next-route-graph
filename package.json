@@ -1,0 +1,42 @@
+{
+  "name": "next-route-graph",
+  "version": "1.0.0",
+  "description": "Visualize and inspect the structure of a Next.js App Router project from the terminal",
+  "type": "module",
+  "bin": {
+    "next-route-graph": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/**/*.test.ts",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "keywords": [
+    "nextjs",
+    "app-router",
+    "routes",
+    "cli",
+    "visualization",
+    "route-map",
+    "typescript"
+  ],
+  "author": "Next Route Map Contributors",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.1.0",
+    "picocolors": "^1.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
