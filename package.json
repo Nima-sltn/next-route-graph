@@ -28,8 +28,18 @@
     "route-map",
     "typescript"
   ],
-  "author": "Next Route Map Contributors",
+  "author": {
+    "name": "Nima Soltanian",
+    "url": "https://github.com/Nima-sltn"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Nima-sltn/next-route-graph.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Nima-sltn/next-route-graph/issues"
+  },
   "dependencies": {
     "commander": "^12.1.0",
     "picocolors": "^1.1.0"
