@@ -1,8 +1,17 @@
 {
   "name": "next-route-graph",
-  "version": "1.0.2",
-  "description": "Visualize and inspect the structure of a Next.js App Router project from the terminal",
+  "version": "1.1.0",
+  "description": "Inspect, lint, and visualize the structure of a Next.js App Router project from the terminal or SDK",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
     "next-route-graph": "dist/cli.js"
   },
@@ -26,6 +35,8 @@
     "cli",
     "visualization",
     "route-map",
+    "mermaid",
+    "linter",
     "typescript"
   ],
   "author": {

@@ -1,19 +1,41 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { HttpMethod, RenderingType, SpecialFileType } from "../types/index.js";
 
-import { RenderingType, SpecialFileType } from "../types/index.js";
-
+/**
+ * Recognizable Next.js App Router special file names without extensions
+ */
 export const SPECIAL_FILES: Set<SpecialFileType> = new Set([
   "page",
   "layout",
   "loading",
   "error",
+  "global-error",
   "not-found",
   "template",
   "default",
   "route",
 ]);
 
+/**
+ * Standard HTTP methods handled by Next.js route handlers
+ */
+export const HTTP_METHODS: readonly HttpMethod[] = [
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+] as const;
+
+/**
+ * Determines whether a file name matches a Next.js App Router convention file.
+ *
+ * @param fileName - File name with extension (e.g., 'page.tsx', 'layout.js', 'global-error.tsx')
+ * @returns SpecialFileType or null if it's not a recognized convention file
+ */
 export function parseSpecialFileType(fileName: string): SpecialFileType | null {
   const baseName = path.parse(fileName).name;
 
@@ -24,64 +46,299 @@ export function parseSpecialFileType(fileName: string): SpecialFileType | null {
   return null;
 }
 
-export async function detectRenderingType(
-  filePath: string,
-): Promise<RenderingType> {
-  try {
-    const content = await fs.readFile(filePath, "utf-8");
-    const firstLines = content.slice(0, 500);
+/**
+ * Extracts prologue directives (e.g., "use client", "use server") declared at the
+ * top of a JavaScript/TypeScript source file.
+ *
+ * Accurately skips shebangs, whitespace, single-line comments, and multi-line comments.
+ * Avoids false positives from comments, template strings, or inner variables.
+ *
+ * @param content - Source file content
+ * @returns Set of discovered directive strings
+ */
+export function getPrologueDirectives(content: string): Set<string> {
+  const directives = new Set<string>();
+  let code = content.replace(/^#![^\n]*\n/, ""); // Strip shebang if present
+  let index = 0;
+  const len = code.length;
 
-    const clientDirectiveRegex =
-      /^(?:(?:\s*\/\/.*?\n)|(?:\s*\/\*[\s\S]*?\*\/)|(?:\s*))["']use client["']/m;
-
-    if (clientDirectiveRegex.test(firstLines)) {
-      return "client";
+  while (index < len) {
+    // Skip whitespace
+    while (index < len && /\s/.test(code[index]!)) {
+      index++;
     }
-  } catch {}
+    if (index >= len) break;
 
-  return "server";
+    // Skip single-line comments
+    if (code[index] === "/" && code[index + 1] === "/") {
+      index += 2;
+      while (index < len && code[index] !== "\n") {
+        index++;
+      }
+      continue;
+    }
+
+    // Skip multi-line comments
+    if (code[index] === "/" && code[index + 1] === "*") {
+      index += 2;
+      while (index < len && !(code[index] === "*" && code[index + 1] === "/")) {
+        index++;
+      }
+      if (index < len) {
+        index += 2; // skip */
+      }
+      continue;
+    }
+
+    // Check string literal directive: 'use ...' or "use ..."
+    const char = code[index];
+    if (char === '"' || char === "'") {
+      const quote = char;
+      let endIndex = index + 1;
+      while (endIndex < len && code[endIndex] !== quote && code[endIndex] !== "\n") {
+        endIndex++;
+      }
+      if (endIndex < len && code[endIndex] === quote) {
+        const strVal = code.slice(index + 1, endIndex);
+        let after = endIndex + 1;
+        while (after < len && (code[after] === " " || code[after] === "\t")) {
+          after++;
+        }
+        if (
+          after >= len ||
+          code[after] === ";" ||
+          code[after] === "\n" ||
+          code[after] === "\r"
+        ) {
+          directives.add(strVal);
+          index = code[after] === ";" ? after + 1 : after;
+          continue;
+        }
+      }
+    }
+
+    // Any non-directive token ends the directive prologue
+    break;
+  }
+
+  return directives;
 }
 
+/**
+ * Strips comments from JavaScript/TypeScript source code to avoid false positives
+ * when matching exported declarations.
+ */
+export function stripComments(content: string): string {
+  return content
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/[^\n]*/g, "");
+}
+
+/**
+ * Analyzes the source content or file on disk to detect if a "use client" directive is present.
+ * Defaults to 'server' per Next.js App Router defaults.
+ *
+ * @param fileContentOrPath - Source code string or disk path to the file
+ * @returns 'client' if "use client" directive is declared, otherwise 'server'
+ */
+export async function detectRenderingType(
+  fileContentOrPath: string,
+): Promise<RenderingType> {
+  let content = fileContentOrPath;
+
+  // If input looks like a potential file path, attempt reading from disk
+  if (
+    !fileContentOrPath.includes("\n") &&
+    !fileContentOrPath.includes("\r") &&
+    !fileContentOrPath.includes(";") &&
+    !fileContentOrPath.includes("{")
+  ) {
+    try {
+      content = await fs.readFile(fileContentOrPath, "utf-8");
+    } catch {
+      // If reading fails, treat input string directly as content
+      content = fileContentOrPath;
+    }
+  }
+
+  const directives = getPrologueDirectives(content);
+  return directives.has("use client") ? "client" : "server";
+}
+
+/**
+ * Inspects a route file's source content to detect exported HTTP methods.
+ * Used for App Router route.ts handlers.
+ * Ignores commented-out declarations and matches multiline or typed exports.
+ *
+ * @param content - Source code content of the file
+ * @returns Array of discovered HTTP methods
+ */
+export function detectHttpMethods(content: string): HttpMethod[] {
+  const discovered: HttpMethod[] = [];
+  const cleanCode = stripComments(content);
+
+  for (const method of HTTP_METHODS) {
+    // Matches:
+    // 1. export [async] function GET(...)
+    // 2. export const/let/var GET = ... or export const GET: Handler = ...
+    // 3. export { GET } or export { handle as GET }
+    const pattern = new RegExp(
+      `export\\s+(?:async\\s+)?(?:function\\s+${method}\\b|(?:const|let|var)\\s+${method}(?:\\s*:[^=]+)?\\s*=|\\{[^}]*\\b(?:as\\s+)?${method}\\b[^}]*\\})`,
+      "m",
+    );
+    if (pattern.test(cleanCode)) {
+      discovered.push(method);
+    }
+  }
+
+  return discovered;
+}
+
+/**
+ * Detects if a file defines Server Actions via the "use server" directive.
+ * Checks file-level directive as well as inline function-level Server Actions.
+ *
+ * @param content - Source code content of the file
+ * @returns True if the file contains a "use server" directive
+ */
+export function detectServerActions(content: string): boolean {
+  const directives = getPrologueDirectives(content);
+  if (directives.has("use server")) {
+    return true;
+  }
+
+  const cleanCode = stripComments(content);
+  // Matches inline server actions: async function / function / arrow function body starting with 'use server'
+  const inlinePattern =
+    /(?:async\s+function|function|\=>)\s*[^{]*\{[\s\r\n]*['"]use server['"]/m;
+  return inlinePattern.test(cleanCode);
+}
+
+/**
+ * Extracts route segment configuration options like runtime and dynamic mode.
+ * Supports TypeScript type annotations and ignores commented-out code.
+ *
+ * @param content - Source code content
+ * @returns Extracted configuration object
+ */
+export function detectRouteConfig(content: string): {
+  runtime?: "nodejs" | "edge";
+  dynamicConfig?: "auto" | "force-dynamic" | "error" | "force-static";
+} {
+  const result: {
+    runtime?: "nodejs" | "edge";
+    dynamicConfig?: "auto" | "force-dynamic" | "error" | "force-static";
+  } = {};
+
+  const cleanCode = stripComments(content);
+
+  const runtimeMatch = cleanCode.match(
+    /export\s+(?:const|let)\s+runtime(?:\s*:\s*[^=]+)?\s*=\s*['"](nodejs|edge)['"]/,
+  );
+  if (runtimeMatch?.[1]) {
+    result.runtime = runtimeMatch[1] as "nodejs" | "edge";
+  }
+
+  const dynamicMatch = cleanCode.match(
+    /export\s+(?:const|let)\s+dynamic(?:\s*:\s*[^=]+)?\s*=\s*['"](auto|force-dynamic|error|force-static)['"]/,
+  );
+  if (dynamicMatch?.[1]) {
+    result.dynamicConfig = dynamicMatch[1] as
+      | "auto"
+      | "force-dynamic"
+      | "error"
+      | "force-static";
+  }
+
+  return result;
+}
+
+/**
+ * Extracts parallel slots (e.g., '@modal') and intercepting markers from a path.
+ *
+ * @param relativePath - Relative file path
+ * @returns Discovered metadata about slots and intercepting patterns
+ */
+export function extractRouteMetadata(relativePath: string): {
+  slots: string[];
+  intercepting?: string;
+} {
+  const parts = relativePath.split("/");
+  const slots: string[] = [];
+  let intercepting: string | undefined;
+
+  for (const part of parts) {
+    if (part.startsWith("@")) {
+      slots.push(part);
+    }
+    // Match (..)(..) before (..)
+    const interceptMatch = part.match(
+      /^(\(\.\.\)\(\.\.\)|\(\.\.\.\)|\(\.\.\)|\(\.\))/,
+    );
+    if (interceptMatch && !intercepting) {
+      intercepting = interceptMatch[1];
+    }
+  }
+
+  return { slots, intercepting };
+}
+
+/**
+ * Normalizes a relative filesystem path within App Router into a public URL route.
+ * Handles Route Groups (folder), Parallel Routes (@slot), and Intercepting Routes.
+ * Decodes Next.js %5F prefixes to underscores for public URLs.
+ *
+ * @param relativePath - App-relative path to a convention file (e.g. 'blog/[slug]/page.tsx')
+ * @returns Normalized URL path (e.g. '/blog/[slug]')
+ */
 export function parseRoutePath(relativePath: string): string {
   const parts = relativePath.split("/");
-  parts.pop();
+  parts.pop(); // Remove file name
 
   const urlSegments: string[] = [];
 
   for (const part of parts) {
     if (!part) continue;
 
+    // Ignore Route Groups like (marketing) or (shop)
     if (part.startsWith("(") && part.endsWith(")")) {
       const inner = part.slice(1, -1);
-
       if (!inner.startsWith(".") && inner !== "...") {
         continue;
       }
     }
 
+    // Ignore parallel route slot directories like @analytics or @auth
     if (part.startsWith("@")) {
       continue;
     }
 
     let cleanedPart = part;
 
-    if (
-      cleanedPart.startsWith("(.)") ||
-      cleanedPart.startsWith("(..)") ||
-      cleanedPart.startsWith("(...)") ||
-      cleanedPart.startsWith("(..)(..)")
-    ) {
-      cleanedPart = cleanedPart.replace(/^(?:\(\.\.\.\)|\(\.\.\)|\(\.\))/, "");
+    // Decode escaped underscore %5F per Next.js spec
+    if (cleanedPart.startsWith("%5F") || cleanedPart.startsWith("%5f")) {
+      cleanedPart = "_" + cleanedPart.slice(3);
     }
+
+    // Strip intercepting route prefixes for the public URL mapping (match (..)(..) before (..))
+    cleanedPart = cleanedPart.replace(
+      /^(?:\(\.\.\)\(\.\.\)|\(\.\.\.\)|\(\.\.\)|\(\.\))/,
+      "",
+    );
 
     urlSegments.push(cleanedPart);
   }
 
   const routePath = "/" + urlSegments.join("/");
-
   return routePath === "/" ? "/" : routePath.replace(/\/+/g, "/");
 }
 
+/**
+ * Classifies a route path into its segment dynamic type.
+ *
+ * @param routePath - Normalized route path
+ * @returns 'optional-catch-all' | 'catch-all' | 'dynamic' | 'static'
+ */
 export function getSegmentType(
   routePath: string,
 ): "static" | "dynamic" | "catch-all" | "optional-catch-all" {
