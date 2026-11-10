@@ -1,245 +1,169 @@
 # next-route-graph
 
-[![npm version](https://img.shields.io/npm/v/next-route-graph.svg?color=blue&style=flat-square)](https://www.npmjs.com/package/next-route-graph)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg?style=flat-square)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-47%20passed-success?style=flat-square)](https://github.com/Nima-sltn/next-route-graph)
+[![npm version](https://img.shields.io/npm/v/next-route-graph.svg)](https://www.npmjs.com/package/next-route-graph)
+[![CI](https://github.com/Nima-sltn/next-route-graph/actions/workflows/ci.yml/badge.svg)](https://github.com/Nima-sltn/next-route-graph/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> Inspect, lint, and visualize the structure of your Next.js App Router project from the terminal or programmatic TypeScript SDK.
+Inspect, lint, and visualize a Next.js App Router project without starting Next.js or executing its code. Use the terminal for quick inspection, an offline HTML report for exploration, and SVG for a diagram you can share anywhere.
 
-`next-route-graph` is a lightweight, zero-config CLI and SDK that scans your `app/` or `src/app/` directory and turns your routing architecture into a clear visual overview.
-
-Useful for auditing large codebases, preventing route collisions in CI/CD, onboarding developers, generating README diagrams, or supplying structured context to AI coding assistants.
-
----
-
-## ✨ Features
-
-- **Route Discovery**: Identifies static, dynamic (`[slug]`), catch-all (`[...slug]`), and optional catch-all (`[[...slug]]`) routes.
-- **App Router Special Conventions**: Full detection of `page`, `layout`, `loading`, `error`, `not-found`, `template`, `default`, and `route` files.
-- **Deep HTTP Method Detection**: Inspects `route.ts` API handlers to extract supported methods (`GET`, `POST`, `PUT`, `DELETE`, etc.).
-- **Route Linter & Collision Detection**: Catches dynamic parameter collisions (e.g. `/users/[id]` vs `/users/[slug]`), missing root layouts, page/route conflicts, and parallel route slot fallbacks.
-- **Multiple Output Formats**: Styled terminal tree, flat list, JSON, **Mermaid flowchart**, **Graphviz DOT**, and **Markdown table**.
-- **Programmatic TypeScript SDK**: Use directly in Node.js scripts, build pipelines, or devtools with full type definitions.
-- **Fast & Zero-Config**: Runs in milliseconds without starting a Next.js server, bundler, or runtime.
-
----
-
-## 🚀 Installation & Quick Start
-
-Run instantly with `npx`:
-
-```bash
-npx next-route-graph
+```sh
+npx next-route-graph ./my-app
+npx next-route-graph ./my-app --html reports/routes.html
+npx next-route-graph ./my-app --svg --output reports/routes.svg
 ```
 
-Or install globally:
+Version **1.2.0** adds rendered SVG exports, an offline HTML explorer, and shared CLI/SDK scanning. See the [changelog](CHANGELOG.md) for details.
 
-```bash
-npm install -g next-route-graph
-```
+![Offline route map with parallel endpoint details](docs/route-report.png)
 
-Or add as a development dependency:
+## What it tells you
 
-```bash
+- Public URL paths, dynamic segments, route groups, parallel slots, and intercepted targets.
+- Page and API handler source files, declared HTTP methods, client directives, Server Actions, and literal segment configuration.
+- Layout chains from the outermost layout to each endpoint.
+- Route collisions, missing page layouts, page/handler conflicts, slot fallback warnings, and misplaced global error files.
+
+Private folders and build/dependency directories are excluded. Routes are sorted for consistent output. All exports work without a Next.js server.
+
+## Install
+
+Requires Node.js 18 or newer. Run with `npx`, or install in your project:
+
+```sh
 npm install -D next-route-graph
 ```
 
----
+## Explore visually
 
-## 🖥️ CLI Usage
+```sh
+# Standalone report; opens directly from disk and works offline
+npx next-route-graph ./my-app --html reports/routes.html
 
-### Basic Tree Overview
+# Local static snapshot; visit the printed URL (default port 3000)
+npx next-route-graph ./my-app --serve
 
-Run from the root of your Next.js project:
-
-```bash
-npx next-route-graph
+# Choose a port, or 0 to choose an available port
+npx next-route-graph ./my-app --serve 4300
 ```
 
-Analyze a specific project directory:
+The report has four sections:
 
-```bash
-npx next-route-graph ./path/to/my-next-app
+| Section | Purpose |
+| --- | --- |
+| Route map | Rendered SVG hierarchy, including segments without endpoints. Select a node with a mouse or keyboard to inspect every source and its layout chain. |
+| Routes | Search paths, source files, methods, or layouts; filter pages, handlers, rendering declarations, dynamic routes, slots, or interceptions. Download matching rows as CSV. |
+| Health | Project-wide diagnostics with rule names, locations, and actionable hints. |
+| Exports | Download SVG, Mermaid, DOT, Markdown, JSON, flat paths, or a plain terminal tree. One selector keeps the interface compact. |
+
+Multiple sources at one URL remain inspectable. Map filtering dims unrelated branches and retains ancestors for context. Report downloads contain all endpoints included in the report; CSV uses the current browser filter.
+
+SVG is a real vector image. Mermaid and Graphviz DOT are source formats for their respective renderers; they do not need to render in your terminal. The HTML map renders directly without a CDN or a graph library. The preview server binds only to `127.0.0.1` and serves the in-memory report. Rerun the command to refresh its snapshot.
+
+## Export and automate
+
+Choose one format flag, or use `--format`. `--output` works for every format and creates missing parent directories. File-write notices go to stderr; stdout remains suitable for pipes.
+
+| Format | Flag | Use |
+| --- | --- | --- |
+| Terminal tree | Default / `--format tree` | Quick overview and lint summary |
+| Flat paths | `--flat` | Shell pipelines |
+| JSON | `--json` | SDK consumers, build tools, or AI context |
+| SVG | `--svg` | Rendered image for reports and design tools |
+| HTML | `--html [file]` / `--format html` | Offline interactive report |
+| Mermaid | `--mermaid` | Fenced diagram for Markdown documentation |
+| Graphviz DOT | `--dot` | Graphviz processing |
+| Markdown | `--markdown` | Documentation table |
+
+```sh
+npx next-route-graph ./my-app --json --output reports/routes.json
+npx next-route-graph ./my-app --mermaid --output reports/routes.md
+npx next-route-graph ./my-app --dot --output reports/routes.dot
+dot -Tsvg reports/routes.dot -o reports/graphviz.svg
+
+# Stream HTML instead of writing a report file
+npx next-route-graph ./my-app --format html > routes.html
+
+# Case-insensitive filtering by path, file, or HTTP method
+npx next-route-graph ./my-app --search POST --json
 ```
 
-Example terminal output:
+`--search` changes endpoint counts in the report; layout/loading/error-file totals and diagnostics still describe the whole project. A filtered export cannot hide a CI failure. Use `--output -` to explicitly write to stdout. `--html` defaults to `route-graph.html`.
 
-```text
-next-route-graph
+## Validate in CI
 
-Project    my-next-app
-Router     App Router
-Root       src/app
+```sh
+npx next-route-graph check ./my-app
+npx next-route-graph check ./my-app --strict --json
 
-Routes
-────────────────────────────────────────
-├── /                            page.tsx
-├── /about                       page.tsx  [client]
-├── /blog                        page.tsx
-├── /blog/[slug]                 page.tsx  [dynamic]
-├── /dashboard                   page.tsx  [@analytics]
-└── /api/users                   route.ts  [GET, POST]
-
-Summary
-────────────────────────────────────────
-Routes       6
-Dynamic      1
-Client       1
-Server       5
-Layouts      2
-Loading      1
-Errors       1
-API Routes   1
-Parallel     1
-
-✓ Analysis completed in 8ms
+# Save a reviewable artifact even if validation fails
+npx next-route-graph ./my-app --strict --format html --output reports/routes.html
 ```
 
----
+| Command | Exit 1 when |
+| --- | --- |
+| Default scan | Scanning or output fails |
+| `check` / `--check` | Scanning fails or lint errors exist |
+| `--strict` | Scanning fails or lint errors or warnings exist |
 
-## 🛡️ Route Health & Linting (`check`)
+JSON scan errors are written as `{ "error": "…", "code": "…" }` to stderr. Successful report data is written to stdout or the requested file. Invalid options also fail. A strict file export is written before lint determines the exit code.
 
-Run route validation checks to detect conflicts, broken parallel slots, or missing layouts before deploying:
-
-```bash
-# Check routes and display issues
-npx next-route-graph check
-
-# Strict mode: exits with code 1 if errors or collisions are discovered (ideal for CI)
-npx next-route-graph check --strict
-```
-
----
-
-## 📊 Output Formats (Strategy Pattern)
-
-Select any format with `--format <type>` or dedicated flags:
-
-### 1. Mermaid Flowchart (`--mermaid`)
-Generate a Mermaid flowchart diagram to paste directly into GitHub READMEs, PRs, or Notion:
-
-```bash
-npx next-route-graph --mermaid
-```
-
-```mermaid
-flowchart TD
-  %% Next.js Route Graph
-  root["/"]
-  route_1["/about (client)"]
-  route_2["/api/users (GET/POST)"]
-  root --> route_1
-  root --> route_2
-```
-
-### 2. Graphviz DOT (`--dot`)
-Output standard Graphviz DOT notation for visual pipelines and rendering tools:
-
-```bash
-npx next-route-graph --dot > routes.dot
-```
-
-### 3. Markdown Table (`--markdown`)
-Generate a clean Markdown summary table:
-
-```bash
-npx next-route-graph --markdown
-```
-
-### 4. JSON (`--json`)
-Output machine-readable JSON for CI integration, custom tooling, or AI agents:
-
-```bash
-npx next-route-graph --json
-```
-
-### 5. Flat Paths (`--flat`)
-Output only newline-separated URL paths:
-
-```bash
-npx next-route-graph --flat
-```
-
-### 6. Route Filtering (`--search`)
-Filter routes matching a specific substring:
-
-```bash
-npx next-route-graph --search blog
-```
-
----
-
-## 📦 Programmatic TypeScript SDK
-
-`next-route-graph` exports a complete, fully-typed programmatic API:
-
-```typescript
-import {
-  detectAppRouter,
-  scanAppDir,
-  analyzeRoutes,
-  lintRoutes,
-  getRenderer,
-} from "next-route-graph";
-
-// 1. Detect App Router root
-const { appDir, displayRoot } = detectAppRouter("./my-next-app");
-
-// 2. Discover files
-const files = await scanAppDir(appDir);
-
-// 3. Analyze routes, HTTP methods, and layouts
-const result = await analyzeRoutes(files, "./my-next-app", displayRoot);
-
-console.log(`Found ${result.summary.routes} routes`);
-
-// 4. Render output via Strategy Pattern
-const mermaidOutput = getRenderer("mermaid").render(result);
-console.log(mermaidOutput);
-
-// 5. Run route lint checks programmatically
-const lint = lintRoutes(result.routes, files);
-if (lint.hasErrors) {
-  console.error("Route validation failed:", lint.issues);
-}
-```
-
----
-
-## 🤖 CI/CD Integration (GitHub Actions)
-
-Add a route validation check to your GitHub Actions pull request workflow:
+Example GitHub Actions step after installing your project's dependencies:
 
 ```yaml
-name: Route Verification
-on: [pull_request]
-
-jobs:
-  check-routes:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm ci
-      - name: Lint Next.js Routes
-        run: npx next-route-graph check --strict
+- name: Check routing and generate a report
+  run: npx next-route-graph . --strict --format html --output reports/routes.html
+- name: Save report
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: route-report
+    path: reports/routes.html
 ```
 
----
+## TypeScript SDK
 
-## 🏛️ Architecture & Documentation
+```ts
+import { inspectProject, filterRoutes, getRenderer } from "next-route-graph";
+import { writeFile } from "node:fs/promises";
 
-- [Architecture Guide](docs/ARCHITECTURE.md) - Pipeline design, data structures, and component diagram.
-- [Architectural Decision Records (ADRs)](docs/adr/0001-hybrid-parsing-and-strategy-renderers.md) - Technical decisions and trade-offs.
-- [Contributing Guide](CONTRIBUTING.md) - How to run tests and contribute.
-- [Changelog](CHANGELOG.md) - Release history and version notes.
+const result = await inspectProject("./my-app");
+await writeFile("routes.html", getRenderer("html").render(result));
+await writeFile("routes.svg", getRenderer("svg").render(result));
 
----
+const api = filterRoutes(result, "api/"); // returns a new result
+console.log(api.summary.apiRoutes);
+if (result.lint?.hasErrors) process.exitCode = 1;
+```
 
-## 📄 License
+The lower-level `detectAppRouter()`, `scanAppDir()`, `analyzeRoutes()`, and `lintRoutes()` APIs remain available. `buildRouteGraph(result.routes)` exposes URL nodes with stable IDs within an export, parent IDs, depth, and all endpoint sources attached to each node. `getRenderer()` rejects unknown formats. See [architecture](docs/ARCHITECTURE.md) for module boundaries.
 
-[MIT](LICENSE) © 2026 [Nima Soltanian](https://github.com/Nima-sltn)
+## Scope and limitations
+
+This is static **App Router** source inspection, not a replacement for `next build`. Pages Router, metadata-generated endpoints, custom `pageExtensions`, rewrites, redirects, middleware/proxy behavior, and imports are not evaluated. Source extraction uses comment-aware text parsing, not an AST or TypeScript evaluation; computed exports, complex string contents, and re-export chains can be incomplete. Detected HTTP methods are declared methods, not Next.js-generated methods.
+
+“Server” means the file has no top-level `use client` directive. It does not prove static generation, caching, SSR behavior, or imported component boundaries. Runtime and dynamic configuration show local literal declarations, not inherited effective values. The URL graph describes structure; its edges do not imply imports, navigation links, or layout inheritance. Layout inheritance appears separately in the details panel.
+
+Diagnostics intentionally cover a small set of routing conventions. Parallel fallback warnings flag potentially unmatched navigation; the tool does not simulate navigation. Share exported reports with the same care as source filenames and internal endpoint names: they contain those names and detected metadata, but never source file contents.
+
+Framework references: [intercepting routes](https://nextjs.org/docs/app/api-reference/file-conventions/intercepting-routes), [parallel routes](https://nextjs.org/docs/app/api-reference/file-conventions/parallel-routes), and [layouts](https://nextjs.org/docs/app/api-reference/file-conventions/layout).
+
+## Development
+
+```sh
+npm ci
+npm run typecheck
+npm test                 # builds first; unit, CLI, SDK, and HTTP integration tests
+npx playwright install chromium
+npm run test:browser     # builds first; real offline browser workflow
+```
+
+Browser development tests require Node.js 20 or newer. To use installed Chrome in PowerShell: `$env:PLAYWRIGHT_CHROMIUM_CHANNEL='chrome'`. Set `NRG_REPORT_ARTIFACT_DIR=reports` to save the example HTML and desktop/mobile screenshots during browser tests.
+
+- [Contributing](CONTRIBUTING.md)
+- [Architecture and trade-offs](docs/ARCHITECTURE.md)
+- [Architecture decision](docs/adr/0001-offline-reports-and-shared-route-graph.md)
+- [Improvement evidence](docs/NEW_FEATURES.md)
+- [Changelog](CHANGELOG.md)
+- [Security](SECURITY.md)
+
+[MIT](LICENSE) © 2026 Nima Soltanian

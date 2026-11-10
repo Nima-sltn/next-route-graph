@@ -1,19 +1,14 @@
 import { AnalysisResult, RouteEntry } from "../types/index.js";
 import type { OutputRenderer } from "./renderer.interface.js";
-
-/**
- * Sanitizes a route path or segment into a valid Mermaid node identifier.
- */
-function toNodeId(pathStr: string, index: number): string {
-  if (pathStr === "/") return "root";
-  return `route_${index}_` + pathStr.replace(/[^a-zA-Z0-9_]/g, "_");
-}
+import { buildRouteGraph } from "./graph.js";
 
 /**
  * Creates a clean Mermaid node label for a route.
  * Replaces square brackets with HTML character entities to avoid breaking Mermaid node shape syntax.
  */
-function createNodeLabel(route: RouteEntry): string {
+function createNodeLabel(
+  route: Pick<RouteEntry, "path" | "rendering" | "segmentType" | "methods">,
+): string {
   const parts: string[] = [route.path];
 
   if (route.methods && route.methods.length > 0) {
@@ -27,31 +22,13 @@ function createNodeLabel(route: RouteEntry): string {
   // Escape square brackets and quotation marks for safe Mermaid rendering
   return parts
     .join(" ")
+    .replace(/&/g, "#38;")
+    .replace(/</g, "#60;")
+    .replace(/>/g, "#62;")
+    .replace(/\r?\n/g, " ")
     .replace(/\[/g, "#91;")
     .replace(/\]/g, "#93;")
-    .replace(/"/g, '\\"');
-}
-
-/**
- * Finds the nearest parent route in the route list.
- */
-function findParentRoute(
-  route: RouteEntry,
-  allRoutes: RouteEntry[],
-): RouteEntry | null {
-  if (route.path === "/") return null;
-
-  const parts = route.path.split("/").filter(Boolean);
-  while (parts.length > 1) {
-    parts.pop();
-    const parentPath = "/" + parts.join("/");
-    const match = allRoutes.find((r) => r.path === parentPath);
-    if (match) return match;
-  }
-
-  // Fallback to root route if it exists
-  const rootRoute = allRoutes.find((r) => r.path === "/");
-  return rootRoute && rootRoute !== route ? rootRoute : null;
+    .replace(/"/g, "#quot;");
 }
 
 /**
@@ -65,7 +42,9 @@ export function renderMermaid(result: AnalysisResult): string {
 
   lines.push("```mermaid");
   lines.push("flowchart TD");
-  lines.push(`  %% Next.js Route Graph for ${result.project}`);
+  lines.push(
+    `  %% Next.js Route Graph for ${result.project.replace(/[\r\n]/g, " ")}`,
+  );
 
   const routes = result.routes;
 
@@ -75,24 +54,17 @@ export function renderMermaid(result: AnalysisResult): string {
     return lines.join("\n");
   }
 
-  const idMap = new Map<RouteEntry, string>();
-
-  routes.forEach((route, index) => {
-    const id = toNodeId(route.path, index);
-    idMap.set(route, id);
-    const label = createNodeLabel(route);
-    lines.push(`  ${id}["${label}"]`);
-  });
-
-  routes.forEach((route) => {
-    const currentId = idMap.get(route)!;
-    const parent = findParentRoute(route, routes);
-
-    if (parent) {
-      const parentId = idMap.get(parent)!;
-      lines.push(`  ${parentId} --> ${currentId}`);
-    }
-  });
+  for (const node of buildRouteGraph(routes)) {
+    const label = node.routes.length
+      ? node.routes.map(createNodeLabel).join(" | ")
+      : createNodeLabel({
+          path: node.path,
+          rendering: "server",
+          segmentType: "static",
+        });
+    lines.push(`  ${node.id}["${label}"]`);
+    if (node.parentId) lines.push(`  ${node.parentId} --> ${node.id}`);
+  }
 
   lines.push("```");
   return lines.join("\n");

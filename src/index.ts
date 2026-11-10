@@ -6,6 +6,8 @@
  */
 
 export { analyzeRoutes } from "./core/analyzer.js";
+export { inspectProject, filterRoutes } from "./core/inspect.js";
+export { buildRouteGraph, type RouteGraphNode } from "./render/graph.js";
 export { detectAppRouter, type DetectionResult } from "./core/detector.js";
 export { lintRoutes } from "./core/linter.js";
 export {
@@ -31,6 +33,7 @@ export {
   NoAppRouterError,
   ProjectNotFoundError,
   RouteDirectoryReadError,
+  RouteFileReadError,
   RouteLintError,
 } from "./errors/index.js";
 
@@ -39,16 +42,20 @@ export {
   DotRenderer,
   FlatRenderer,
   getRenderer,
+  HtmlRenderer,
   JsonRenderer,
   MarkdownRenderer,
   MermaidRenderer,
   renderDot,
   renderFlat,
+  renderHtml,
   renderJson,
   renderMarkdown,
   renderMermaid,
   renderTree,
   TreeRenderer,
+  SvgRenderer,
+  renderSvg,
 } from "./render/index.js";
 
 export type { OutputRenderer } from "./render/index.js";

@@ -45,6 +45,17 @@ test("detectServerActions - detects 'use server' directive", () => {
   assert.strictEqual(detectServerActions(regularCode), false);
 });
 
+test("detectHttpMethods - uses exported names and ignores type-only exports", () => {
+  assert.deepStrictEqual(
+    detectHttpMethods("const GET = () => {}; export { GET as POST };"),
+    ["POST"],
+  );
+  assert.deepStrictEqual(
+    detectHttpMethods("export { handle as GET, type DELETE, POST as helper };"),
+    ["GET"],
+  );
+});
+
 test("detectRouteConfig - extracts runtime and dynamic configs", () => {
   const code = `
     export const runtime = 'edge';

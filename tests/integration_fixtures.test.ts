@@ -113,7 +113,7 @@ test("integration - end-to-end analysis of a realistic Next.js App Router projec
   assert.ok(dashboardRoute);
   assert.strictEqual(dashboardRoute?.layoutChain?.length, 2, "Dashboard route must inherit both root and nested layout");
 
-  const interceptedRoute = result.routes.find((r) => r.path === "/feed/photo/[id]");
+  const interceptedRoute = result.routes.find((r) => r.path === "/photo/[id]");
   assert.ok(interceptedRoute);
   assert.strictEqual(interceptedRoute?.intercepting, "(..)");
 

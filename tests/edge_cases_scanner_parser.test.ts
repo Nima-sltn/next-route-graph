@@ -46,7 +46,7 @@ test("parser - decodes %5F escaped underscores in URL segments", () => {
 
 test("parser - strips multi-level intercepting routes (..)(..) properly", () => {
   const path1 = parseRoutePath("feed/(..)(..)photo/[id]/page.tsx");
-  assert.strictEqual(path1, "/feed/photo/[id]");
+  assert.strictEqual(path1, "/photo/[id]");
 
   const meta = extractRouteMetadata("feed/(..)(..)photo/[id]/page.tsx");
   assert.strictEqual(meta.intercepting, "(..)(..)");

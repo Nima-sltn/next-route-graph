@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-11-10
+
+### Added
+- Offline SVG route maps with intermediate URL segments and source information; available through `--svg`, `--format svg`, and the SDK.
+- A focused HTML explorer with route selection, layout chains, search, endpoint filters, health diagnostics, and downloadable exports.
+- `--output <file>` for every format, including creation of parent directories.
+- `inspectProject()` and immutable `filterRoutes()` SDK helpers, plus a shared `buildRouteGraph()` model for visual exporters.
+- Offline browser regression tests and Windows/Linux CI checks.
+
+### Fixed
+- Interception markers now resolve target URL segments while ignoring route groups and parallel slots.
+- Valid parallel and intercepted views no longer trigger duplicate URL diagnostics. API-only projects do not require UI layouts.
+- Dynamic parameter conflicts are detected even when descendant endpoints differ; static paths remain case-sensitive.
+- File read failures abort with `ERR_FILE_READ` instead of silently producing incomplete metadata.
+- Named HTTP exports use the exported alias and ignore type-only entries.
+- HTML uses escaped markup and text nodes for source data, a restrictive content policy, and spreadsheet-safe CSV cells.
+- Preview binds to `127.0.0.1`, validates ports, handles occupied ports, and serves only the report.
+- Format conflicts and unknown formats fail explicitly. Reports remain available when strict validation fails; status messages use stderr.
+- Mermaid and DOT now share the URL hierarchy, including segments without endpoints; DOT line breaks render correctly.
+- Tests rebuild production artifacts first, preventing stale CLI and SDK tests.
+
+### Changed
+- Indexed layout lookup replaces repeated scans of every discovered file per endpoint.
+- Search updates every endpoint summary count while keeping convention totals and diagnostics project-wide.
+- CLI version is read from package metadata; npm packages include the linked guides, changelog, and report screenshot.
+
 ## [1.1.0] - 2026-11-07
 
 ### Added
@@ -15,14 +41,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `MermaidRenderer` (`--mermaid` or `--format mermaid`): Generates Mermaid flowchart diagrams with entity-encoded node shapes.
   - `DotRenderer` (`--dot` or `--format dot`): Generates Graphviz DOT graphs with properly escaped string literals.
   - `MarkdownRenderer` (`--markdown` or `--format markdown`): Generates GitHub-flavored Markdown tables.
+  - `HtmlRenderer` (`--html`, `--serve`, or `--format html`): Generates a standalone, zero-dependency interactive visual HTML report with route hierarchy cards, searchable data table, CSV export, integrated tabbed format explorer (Mermaid, DOT, Markdown, ANSI Terminal, JSON, Flat), and built-in local preview server.
 - **Deep HTTP Method & Metadata Inspection**: Automatically detects exported HTTP handlers (`GET`, `POST`, `PUT`, `DELETE`, etc.) in `route.ts`, React Server Actions (`"use server"`), and route segment configurations (`runtime`, `dynamic`).
 - **Programmatic TypeScript SDK**: Exported root module `dist/index.js` with TypeScript type declarations (`dist/index.d.ts`) and `"exports"` map, enabling library usage via `import { analyzeRoutes } from 'next-route-graph'`.
 - **Domain Error Hierarchy**: Structured error classes (`ProjectNotFoundError`, `AmbiguousRouterError`, `NoAppRouterError`, `RouteLintError`) with machine-readable codes and actionable hints.
 - **New CLI Commands & Flags**:
   - `next-route-graph check`: Run route linting checks with exit codes.
   - `--strict`: Fails with non-zero exit code if route issues or collisions are detected.
-  - `--format <tree|flat|json|mermaid|dot|markdown>`: Flexible format selector.
-- **Comprehensive Automated Test Suite**: Expanded test coverage from 9 to 47 unit and integration tests, including end-to-end Next.js project fixtures, CLI subprocess tests, scanner edge cases, linter edge cases, and external SDK consumer verification.
+  - `--format <tree|flat|json|mermaid|dot|markdown|html>`: Flexible format selector.
+  - `--html [file]`: Export self-contained interactive HTML report (defaults to `route-graph.html`).
+  - `--serve [port]`: Spin up zero-dependency local HTTP preview server (defaults to port 3000) and open in default browser.
+- **Comprehensive Automated Test Suite**: Expanded test coverage from 9 to 50 unit and integration tests, including end-to-end Next.js project fixtures, CLI subprocess tests, scanner edge cases, linter edge cases, external SDK consumer verification, and HTML report validation.
 - **Documentation & Governance Suite**: Added `docs/ARCHITECTURE.md`, `docs/adr/0001-hybrid-parsing-and-strategy-renderers.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `SECURITY.md`.
 
 ### Fixed

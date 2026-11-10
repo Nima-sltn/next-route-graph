@@ -9,6 +9,7 @@ Thank you for your interest in contributing! We welcome bug reports, documentati
 1. **Prerequisites**:
    * Node.js >= 18.0.0
    * npm >= 9.0.0
+   * Node.js >= 20 for the optional browser tests
 
 2. **Clone and Install**:
    ```bash
@@ -38,6 +39,10 @@ npm run typecheck
 # Build the project
 npm run build
 
+# Exercise the offline HTML report in Chromium
+npx playwright install chromium
+npm run test:browser
+
 # Run the complete pre-publish verification suite
 npm run prepublishOnly
 ```
@@ -52,10 +57,12 @@ npm run prepublishOnly
 * `src/core/scanner.ts` - File discovery and directory traversal.
 * `src/core/parser.ts` - Directive detection, HTTP method parsing, and URL resolution.
 * `src/core/linter.ts` - Route collision and framework best practice validation.
-* `src/core/analyzer.ts` - Core analysis orchestrator.
-* `src/render/` - Strategy pattern renderers (Tree, JSON, Flat, Mermaid, DOT, Markdown).
+* `src/core/analyzer.ts` - Core analysis orchestrator and indexed layout lookup.
+* `src/core/inspect.ts` - Shared CLI/SDK scan entry point and immutable filtering.
+* `src/render/` - Text, SVG, and offline HTML renderers with a shared URL graph.
+* `src/preview.ts` - Loopback-only static report serving.
 * `src/errors/` - Domain error classes and actionable hints.
-* `tests/` - Node.js built-in test runner test suites.
+* `tests/` - Node.js built-in unit/integration tests and Playwright browser checks.
 
 ---
 

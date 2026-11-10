@@ -1,39 +1,16 @@
-import { AnalysisResult, RouteEntry } from "../types/index.js";
+import { AnalysisResult } from "../types/index.js";
+import { buildRouteGraph } from "./graph.js";
 import type { OutputRenderer } from "./renderer.interface.js";
 
 /**
  * Escapes backslashes and double quotes for Graphviz DOT format.
  */
 function escapeDot(str: string): string {
-  return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-/**
- * Sanitizes project name to form a valid Graphviz identifier.
- */
-function sanitizeIdentifier(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_]/g, "_");
-}
-
-/**
- * Finds the nearest parent route in the route list.
- */
-function findParentRoute(
-  route: RouteEntry,
-  allRoutes: RouteEntry[],
-): RouteEntry | null {
-  if (route.path === "/") return null;
-
-  const parts = route.path.split("/").filter(Boolean);
-  while (parts.length > 1) {
-    parts.pop();
-    const parentPath = "/" + parts.join("/");
-    const match = allRoutes.find((r) => r.path === parentPath);
-    if (match) return match;
-  }
-
-  const rootRoute = allRoutes.find((r) => r.path === "/");
-  return rootRoute && rootRoute !== route ? rootRoute : null;
+  return str
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n");
 }
 
 /**
@@ -62,26 +39,26 @@ export function renderDot(result: AnalysisResult): string {
     return lines.join("\n");
   }
 
-  const idMap = new Map<RouteEntry, string>();
+  const nodes = buildRouteGraph(routes);
+  nodes.forEach((node) => {
+    const route = node.routes[0];
+    const id = node.id;
 
-  routes.forEach((route, index) => {
-    const id = `node_${index}`;
-    idMap.set(route, id);
-
-    const labels: string[] = [route.path];
-    if (route.methods && route.methods.length > 0) {
-      labels.push(`[${route.methods.join(", ")}]`);
-    } else if (route.rendering === "client") {
-      labels.push("[client]");
-    } else if (route.segmentType !== "static") {
-      labels.push(`[${route.segmentType}]`);
+    const labels: string[] = [node.path];
+    for (const endpoint of node.routes) {
+      labels.push(endpoint.file);
+      if (endpoint.methods?.length)
+        labels.push(`[${endpoint.methods.join(", ")}]`);
+      else if (endpoint.rendering === "client") labels.push("[client]");
+      else if (endpoint.segmentType !== "static")
+        labels.push(`[${endpoint.segmentType}]`);
     }
 
-    const labelText = escapeDot(labels.join("\\n"));
+    const labelText = labels.map(escapeDot).join("\\n");
     const color =
-      route.rendering === "client"
+      route?.rendering === "client"
         ? 'fillcolor="#ecfeff", color="#06b6d4"'
-        : route.type === "route"
+        : route?.type === "route"
           ? 'fillcolor="#fdf4ff", color="#c026d3"'
           : 'fillcolor="#f8fafc", color="#64748b"';
 
@@ -90,13 +67,8 @@ export function renderDot(result: AnalysisResult): string {
 
   lines.push("");
 
-  routes.forEach((route) => {
-    const currentId = idMap.get(route)!;
-    const parent = findParentRoute(route, routes);
-    if (parent) {
-      const parentId = idMap.get(parent)!;
-      lines.push(`  ${parentId} -> ${currentId};`);
-    }
+  nodes.forEach((node) => {
+    if (node.parentId) lines.push(`  ${node.parentId} -> ${node.id};`);
   });
 
   lines.push("}");

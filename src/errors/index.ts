@@ -65,6 +65,18 @@ export class RouteDirectoryReadError extends NextRouteGraphError {
   }
 }
 
+export class RouteFileReadError extends NextRouteGraphError {
+  readonly code = "ERR_FILE_READ";
+
+  constructor(filePath: string, cause: unknown) {
+    super(
+      `Unable to read route file: "${filePath}"`,
+      "Check that the file still exists and is readable, then scan again.",
+    );
+    this.cause = cause;
+  }
+}
+
 export class RouteLintError extends NextRouteGraphError {
   readonly code = "ERR_ROUTE_LINT";
   readonly errorCount: number;
@@ -76,7 +88,7 @@ export class RouteLintError extends NextRouteGraphError {
     if (warningCount > 0) details.push(`${warningCount} warning(s)`);
     super(
       `Route validation failed with ${details.join(" and ") || "issues"}.`,
-      "Fix the reported route issues or run without --strict.",
+      "Fix the reported route issues. Use a normal scan without --check or --strict to inspect without failing validation.",
     );
     this.errorCount = errorCount;
     this.warningCount = warningCount;

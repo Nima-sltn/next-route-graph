@@ -1,6 +1,6 @@
 {
   "name": "next-route-graph",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Inspect, lint, and visualize the structure of a Next.js App Router project from the terminal or SDK",
   "type": "module",
   "main": "./dist/index.js",
@@ -16,7 +16,11 @@
     "next-route-graph": "dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "docs",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md"
   ],
   "engines": {
     "node": ">=18"
@@ -25,8 +29,11 @@
     "dev": "tsx src/cli.ts",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+    "pretest": "npm run build",
+    "test": "tsx --test tests/run.mjs",
+    "pretest:browser": "npm run build",
+    "test:browser": "node --test tests/browser/report.test.mjs",
+    "prepublishOnly": "npm run typecheck && npm test"
   },
   "keywords": [
     "nextjs",
@@ -57,6 +64,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
+    "playwright": "^1.62.1",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   }

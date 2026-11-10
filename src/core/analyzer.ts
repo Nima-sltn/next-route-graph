@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { RouteFileReadError } from "../errors/index.js";
 
 import {
   AnalysisResult,
@@ -11,7 +12,7 @@ import {
 import { lintRoutes } from "./linter.js";
 import {
   detectHttpMethods,
-  detectRenderingType,
+  getPrologueDirectives,
   detectRouteConfig,
   detectServerActions,
   extractRouteMetadata,
@@ -68,9 +69,13 @@ async function processDirectoryFiles(dirFiles: DiscoveredFile[]): Promise<{
     let content = "";
     try {
       content = await fs.readFile(file.fullPath, "utf-8");
-    } catch {}
+    } catch (cause) {
+      throw new RouteFileReadError(file.relativePath, cause);
+    }
 
-    const rendering = await detectRenderingType(content);
+    const rendering = getPrologueDirectives(content).has("use client")
+      ? "client"
+      : "server";
     const methods =
       specialType === "route" ? detectHttpMethods(content) : undefined;
     const hasServerActions = detectServerActions(content);
@@ -113,7 +118,7 @@ async function processDirectoryFiles(dirFiles: DiscoveredFile[]): Promise<{
  */
 function findLayoutChain(
   targetDir: string,
-  allFiles: DiscoveredFile[],
+  layoutsByDirectory: Map<string, string>,
 ): string[] {
   const layoutChain: string[] = [];
   const normalizedTarget = targetDir === "." ? "" : targetDir;
@@ -124,14 +129,10 @@ function findLayoutChain(
     const currentPath = segments.slice(0, i).join("/");
     const checkDir = currentPath === "" ? "." : currentPath;
 
-    const layout = allFiles.find((f) => {
-      const dir = path.dirname(f.relativePath).replace(/\\/g, "/");
-      const isDir = dir === checkDir || (checkDir === "." && dir === "");
-      return isDir && parseSpecialFileType(f.fileName) === "layout";
-    });
+    const layout = layoutsByDirectory.get(checkDir);
 
     if (layout) {
-      layoutChain.push(layout.relativePath);
+      layoutChain.push(layout);
     }
   }
 
@@ -144,7 +145,7 @@ function findLayoutChain(
  */
 function createRouteEntry(
   routeFiles: RouteFile[],
-  allFiles: DiscoveredFile[],
+  layoutsByDirectory: Map<string, string>,
 ): RouteEntry | null {
   const pageFile = routeFiles.find((file) => file.type === "page");
   const routeHandlerFile = routeFiles.find((file) => file.type === "route");
@@ -157,7 +158,7 @@ function createRouteEntry(
   const computedPath = parseRoutePath(primaryFile.relativePath);
   const metadata = extractRouteMetadata(primaryFile.relativePath);
   const dir = path.dirname(primaryFile.relativePath).replace(/\\/g, "/");
-  const layoutChain = findLayoutChain(dir, allFiles);
+  const layoutChain = findLayoutChain(dir, layoutsByDirectory);
 
   return {
     path: computedPath,
@@ -179,7 +180,7 @@ function createRouteEntry(
 /**
  * Aggregates summary statistics for the analyzed routes and convention files.
  */
-function getRoutesSummary(
+export function getRoutesSummary(
   routes: RouteEntry[],
   layouts: number,
   loading: number,
@@ -230,6 +231,13 @@ export async function analyzeRoutes(
 ): Promise<AnalysisResult> {
   const startTime = Date.now();
   const dirMap = groupFilesByDirectory(files);
+  const layoutsByDirectory = new Map<string, string>();
+  for (const [dir, dirFiles] of dirMap) {
+    const layout = dirFiles.find(
+      (file) => parseSpecialFileType(file.fileName) === "layout",
+    );
+    if (layout) layoutsByDirectory.set(dir, layout.relativePath);
+  }
 
   const discoveredRoutes: RouteEntry[] = [];
   let totalLayouts = 0;
@@ -243,7 +251,7 @@ export async function analyzeRoutes(
     totalLoading += result.loading;
     totalErrors += result.errors;
 
-    const route = createRouteEntry(result.routeFiles, files);
+    const route = createRouteEntry(result.routeFiles, layoutsByDirectory);
     if (route) {
       discoveredRoutes.push(route);
     }

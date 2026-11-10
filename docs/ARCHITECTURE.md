@@ -1,102 +1,71 @@
-# next-route-graph Architecture
+# Architecture
 
-This document describes the architectural design, core pipelines, and component boundaries of `next-route-graph`.
-
----
-
-## 1. High-Level System Overview
-
-`next-route-graph` operates as both a zero-config Command Line Interface (CLI) and a fully typed programmatic TypeScript SDK. Its goal is to inspect, lint, and visualize the routing topology of Next.js App Router applications without needing a running Next.js server or compiling the application runtime.
+`next-route-graph` scans App Router source files without importing the target project's code. The CLI and SDK share the same analysis pipeline. Renderers consume plain analysis data and return strings; file writes, HTTP serving, and exit policy belong outside that pipeline.
 
 ```mermaid
 flowchart TD
-    CLI["CLI (cli.ts)"] --> Detector["App Router Detector"]
-    SDK["Programmatic SDK (index.ts)"] --> Detector
-
-    Detector --> Scanner["Directory Scanner (scanner.ts)"]
-    Scanner --> Analyzer["Route Analyzer Pipeline (analyzer.ts)"]
-
-    subgraph Analysis Pipeline
-        Analyzer --> Parser["Directive & AST Parser (parser.ts)"]
-        Analyzer --> Linter["Route Linter Engine (linter.ts)"]
-    end
-
-    Analyzer --> Strategy["Strategy Renderers (render/)"]
-
-    Strategy --> Tree["Tree Renderer"]
-    Strategy --> Flat["Flat Renderer"]
-    Strategy --> JSON["JSON Renderer"]
-    Strategy --> Mermaid["Mermaid Flowchart"]
-    Strategy --> DOT["Graphviz DOT"]
-    Strategy --> Markdown["Markdown Table"]
+  CLI[CLI: options, output, exit policy] --> Inspect[inspectProject]
+  SDK[TypeScript SDK] --> Inspect
+  Inspect --> Detect[Detect App Router root]
+  Detect --> Scan[Discover source files]
+  Scan --> Analyze[Analyze convention files]
+  Analyze --> Parse[Comment-aware text parser]
+  Analyze --> Lint[Route diagnostics]
+  Analyze --> Result[AnalysisResult]
+  Result --> Filter[Optional immutable endpoint filter]
+  Filter --> Render[OutputRenderer]
+  Render --> Text[Tree / Flat / JSON / Markdown]
+  Render --> Graph[Shared URL graph]
+  Graph --> Visual[SVG / Mermaid / DOT / HTML]
+  Render --> CLI
+  CLI --> Files[File or stdout]
+  CLI --> Preview[Loopback HTTP preview]
 ```
 
----
+## Boundaries
 
-## 2. Core Architectural Components
+| Module | Responsibility |
+| --- | --- |
+| `core/detector.ts` | Select `app/`, `src/app/`, or a direct App Router directory; report missing or ambiguous roots. |
+| `core/scanner.ts` | Walk supported source files. Skip private, hidden, dependency, and build directories; do not traverse symlinks. |
+| `core/parser.ts` | Recognize convention files, directives, declared methods, and literal config. Resolve URL paths, including interception relative to URL segments. It is a text parser, not an AST. |
+| `core/analyzer.ts` | Read each convention file once, construct endpoint entries, index layout files, attach outer-to-inner layout chains, compute counts, and run lint. |
+| `core/inspect.ts` | Compose detection → scan → analysis for the CLI and SDK; provide immutable filtering and full scan timing. |
+| `core/linter.ts` | Return diagnostics, never choose process exit codes. Partition collision checks by parallel branch and exclude intercepted variants from ordinary URL collision checks. |
+| `render/graph.ts` | Build a URL trie including non-endpoint segments; retain every source at shared URLs. Provide shared markup escaping for HTML/XML. |
+| `render/*` | Convert `AnalysisResult` into text, SVG, or HTML. No filesystem writes, network calls, or process exits. |
+| `preview.ts` | Serve only an in-memory HTML report on `127.0.0.1`, with GET/HEAD, no filesystem access, and explicit listen errors. |
+| `cli.ts` | Validate output selection and port; choose format, destination, and CI policy; report errors to stderr. |
 
-### 2.1 Project Detection (`core/detector.ts`)
-* Resolves the target project path.
-* Discovers whether the project uses `./app` or `./src/app`.
-* Throws explicit domain errors (`ProjectNotFoundError`, `AmbiguousRouterError`, `NoAppRouterError`) if the directory structure is invalid or ambiguous.
+## Data contracts
 
-### 2.2 Filesystem Scanner (`core/scanner.ts`)
-* Recursively traverses the App Router directory.
-* Excludes build artifacts (`.next`, `dist`, `node_modules`, `coverage`, `.git`).
-* Filters for supported source extensions (`.ts`, `.tsx`, `.js`, `.jsx`).
-* Returns normalized relative and absolute file paths.
+`DiscoveredFile` has an absolute path for reads and a normalized App Router-relative path for output. `RouteEntry` represents an endpoint source, not a unique URL: parallel views and intercepted variants can share a public path. `RouteFile` describes convention files in the endpoint's filesystem directory. `layoutChain` records the layouts found in ancestor directories.
 
-### 2.3 Directive & AST Parser (`core/parser.ts`)
-* Identifies Next.js App Router convention files (`page`, `layout`, `loading`, `error`, `not-found`, `template`, `default`, `route`).
-* Evaluates `"use client"` and `"use server"` directives.
-* Inspects `route.ts` handlers to detect exported HTTP verbs (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`).
-* Extracts route segment configuration exports (`runtime`, `dynamic`).
-* Normalizes filesystem paths to canonical URL paths while preserving parallel route slots (`@modal`) and intercepting patterns (`(..)`).
+`AnalysisResult` contains project identity, endpoint entries, summary counts, scan duration, and lint results. JSON exports preserve that shape. `filterRoutes()` returns a new result, recalculates endpoint-related counts, and retains project-wide convention totals and diagnostics. Strict validation always uses the full scan.
 
-### 2.4 Route Linter Engine (`core/linter.ts`)
-* **Dynamic Route Collision**: Flags conflicting parameter declarations at the same routing level (e.g. `/users/[id]` vs `/users/[slug]`).
-* **Page vs Route Conflict**: Ensures `page.tsx` and `route.ts` do not exist within the same directory segment.
-* **Root Layout Enforcement**: Verifies the presence of a mandatory root `layout.tsx`.
-* **Parallel Slot Fallbacks**: Checks that parallel slots (`@slot`) define a `default.tsx` to prevent Next.js 404s during navigation.
+`RouteGraphNode` represents a URL segment. Its `routes` array retains every endpoint source at that path; an empty array means a grouping segment. Nodes have unique export-local IDs, a parent ID, depth, and normalized path. SVG, Mermaid, and DOT use this same model. These edges represent URL ancestry, not layout or import relationships.
 
-### 2.5 Strategy Pattern Renderers (`render/`)
-All formatters implement the `OutputRenderer` interface:
+## Complexity and failure handling
 
-```typescript
-export interface OutputRenderer {
-  render(result: AnalysisResult): string;
-}
-```
+Scanning and source extraction scale with discovered files and bytes read. Layout lookup uses a directory index and walks only each endpoint's ancestors, rather than searching every file at every depth. Graph construction creates nodes for URL prefixes and sorts siblings for deterministic traversal. Source reads remain sequential to bound open files and memory; no concurrency framework or cache is needed for a one-shot local scan.
 
-Available formatters:
-* **TreeRenderer**: Colorized ANSI terminal tree output with route badges and summary counts.
-* **FlatRenderer**: Clean newline-separated URL paths for shell scripting and piping.
-* **JsonRenderer**: Formatted JSON for machine consumption, CI automation, and AI context prompts.
-* **MermaidRenderer**: Produces Mermaid `flowchart TD` diagrams for embedding in documentation.
-* **DotRenderer**: Generates Graphviz DOT syntax for graph visualization.
-* **MarkdownRenderer**: Emits GitHub-flavored Markdown tables.
+Detection, directory reads, and convention-file reads raise typed errors with codes and hints. Read failures abort analysis: silently substituting an empty source would turn missing metadata into misleading findings. Renderers do not catch these errors or mutate process state. Unknown renderer formats throw rather than silently producing a terminal tree.
 
----
+CLI reports are written before strict lint exit policy runs, so failing CI jobs can retain artifacts. Preview validates strict policy before starting, so a failed check never leaves a server alive. Operational notices use stderr; successful exports go to stdout or a file.
 
-## 3. Error Handling Architecture
+## Offline report and security
 
-The project implements a domain-specific error hierarchy inheriting from `NextRouteGraphError`:
+The report contains a pre-rendered SVG, route table, health diagnostics, and encoded JSON for interaction. HTML/XML text and attributes are escaped; `<` is Unicode-escaped in embedded JSON to prevent script termination. Browser interactions create text nodes instead of interpolating source data into HTML. A content security policy blocks network dependencies. Browser script and styles are inline so reports work from disk.
 
-```mermaid
-classDiagram
-    Error <|-- NextRouteGraphError
-    NextRouteGraphError <|-- ProjectNotFoundError
-    NextRouteGraphError <|-- AmbiguousRouterError
-    NextRouteGraphError <|-- NoAppRouterError
-    NextRouteGraphError <|-- RouteDirectoryReadError
-    NextRouteGraphError <|-- RouteLintError
+CSV cells are quoted and formula-leading values receive a leading apostrophe. Downloads use local Blob URLs. Clipboard failure opens the selectable source instead. The preview serves a static snapshot with no cache, no directory listing, and no arbitrary file routes.
 
-    class NextRouteGraphError {
-        +string code
-        +string hint
-    }
-```
+The report exposes filenames, endpoint names, and detected metadata, not file bodies. Its purpose is architecture inspection, not vulnerability detection or runtime verification.
 
-Every domain error contains:
-* `code`: Machine-readable error code (e.g., `ERR_PROJECT_NOT_FOUND`).
-* `hint`: Actionable recommendation explaining how the developer can resolve the issue.
+## Verification
+
+- Node's test runner covers parsing, scanning, linting, renderers, source escaping, immutable filtering, the built SDK, CLI file exports, strict policy, and HTTP preview behavior.
+- `npm test` builds production artifacts first, so CLI and consumer tests cannot accidentally validate an old `dist/`.
+- Playwright is development-only. Browser tests open local HTML offline and exercise keyboard selection, duplicate endpoint details, search, filters, all downloads, SVG XML validity, hostile source data, formula-safe CSV, and mobile overflow.
+- CI tests the CLI on Windows and Linux and runs browser checks on Linux. No Next.js runtime is required.
+
+See [ADR 0001](adr/0001-offline-reports-and-shared-route-graph.md) for the rendering trade-off and [README limitations](../README.md#scope-and-limitations) for the analysis boundary.

@@ -17,7 +17,7 @@ function createPatternKey(routePath: string): string {
       if (seg.startsWith("[[...") && seg.endsWith("]]")) return ":optCatchAll";
       if (seg.startsWith("[...") && seg.endsWith("]")) return ":catchAll";
       if (seg.startsWith("[") && seg.endsWith("]")) return ":dynamic";
-      return seg.toLowerCase();
+      return seg;
     })
     .join("/");
 }
@@ -59,7 +59,8 @@ export function lintRoutes(
   if (!hasTopLevelRootLayout && routes.length > 0) {
     // Check if every route has at least one layout in its layoutChain
     const routesWithoutLayout = routes.filter(
-      (r) => !r.layoutChain || r.layoutChain.length === 0,
+      (r) =>
+        r.type === "page" && (!r.layoutChain || r.layoutChain.length === 0),
     );
 
     if (routesWithoutLayout.length > 0) {
@@ -99,14 +100,28 @@ export function lintRoutes(
   // -------------------------------------------------------------
   // Rule 3: Exact URL Collision across Route Groups (no-duplicate-paths)
   // -------------------------------------------------------------
-  const pathToFileMap = new Map<string, string[]>();
-  for (const route of routes) {
-    const existing = pathToFileMap.get(route.path) || [];
-    existing.push(route.file);
-    pathToFileMap.set(route.path, existing);
+  // Slots render alongside children, and intercepted pages intentionally share URLs.
+  // Collisions only apply within the same parallel-slot branch.
+  const branchKey = (route: RouteEntry) => {
+    const parts = route.file.replace(/\\/g, "/").split("/");
+    let slot = -1;
+    parts.forEach((part, index) => {
+      if (part.startsWith("@")) slot = index;
+    });
+    return slot < 0 ? "" : parts.slice(0, slot + 1).join("/");
+  };
+  const publicRoutes = routes.filter((route) => !route.intercepting);
+  const pathToFileMap = new Map<string, RouteEntry[]>();
+  for (const route of publicRoutes) {
+    const key = JSON.stringify([branchKey(route), route.path]);
+    const existing = pathToFileMap.get(key) || [];
+    existing.push(route);
+    pathToFileMap.set(key, existing);
   }
 
-  for (const [routePath, fileList] of pathToFileMap.entries()) {
+  for (const entries of pathToFileMap.values()) {
+    const routePath = entries[0]!.path;
+    const fileList = entries.map((route) => route.file);
     if (fileList.length > 1) {
       issues.push({
         rule: "no-duplicate-paths",
@@ -121,25 +136,29 @@ export function lintRoutes(
   // -------------------------------------------------------------
   // Rule 4: Dynamic Segment Collisions (no-route-collisions)
   // -------------------------------------------------------------
-  const patternMap = new Map<string, RouteEntry[]>();
-  for (const route of routes) {
-    const key = createPatternKey(route.path);
-    const existing = patternMap.get(key) || [];
-    existing.push(route);
-    patternMap.set(key, existing);
+  const patternMap = new Map<string, Set<string>>();
+  for (const route of publicRoutes) {
+    const segments = route.path.split("/").filter(Boolean);
+    for (let depth = 1; depth <= segments.length; depth++) {
+      if (!segments[depth - 1]!.startsWith("[")) continue;
+      const prefix = "/" + segments.slice(0, depth).join("/");
+      const key = JSON.stringify([branchKey(route), createPatternKey(prefix)]);
+      const existing = patternMap.get(key) ?? new Set<string>();
+      existing.add(prefix);
+      patternMap.set(key, existing);
+    }
   }
 
-  for (const [pattern, patternRoutes] of patternMap.entries()) {
-    if (patternRoutes.length > 1) {
-      const uniquePaths = Array.from(new Set(patternRoutes.map((r) => r.path)));
-      if (uniquePaths.length > 1) {
-        issues.push({
-          rule: "no-route-collisions",
-          severity: "error",
-          message: `Dynamic route collision detected matching pattern "/${pattern}": ${uniquePaths.join(", ")}`,
-          hint: "Next.js cannot disambiguate multiple dynamic segments at the same level. Unify the dynamic parameter names.",
-        });
-      }
+  for (const patternPaths of patternMap.values()) {
+    const uniquePaths = [...patternPaths];
+    const pattern = createPatternKey(uniquePaths[0]!);
+    if (uniquePaths.length > 1) {
+      issues.push({
+        rule: "no-route-collisions",
+        severity: "error",
+        message: `Dynamic route collision detected matching pattern "/${pattern}": ${uniquePaths.join(", ")}`,
+        hint: "Next.js cannot disambiguate multiple dynamic segments at the same level. Unify the dynamic parameter names.",
+      });
     }
   }
 

@@ -14,7 +14,10 @@ test("CLI e2e - supports --help and --version", async () => {
   assert.ok(helpOut.includes("Usage: next-route-graph"));
 
   const { stdout: verOut } = await exec(process.execPath, [cliPath, "--version"]);
-  assert.ok(verOut.includes("1.1.0"));
+  const { version } = JSON.parse(
+    await fs.readFile(new URL("../package.json", import.meta.url), "utf-8"),
+  );
+  assert.strictEqual(verOut.trim(), version);
 });
 
 test("CLI e2e - outputs valid JSON format and handles --search", async () => {

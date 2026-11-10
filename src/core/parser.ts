@@ -95,7 +95,11 @@ export function getPrologueDirectives(content: string): Set<string> {
     if (char === '"' || char === "'") {
       const quote = char;
       let endIndex = index + 1;
-      while (endIndex < len && code[endIndex] !== quote && code[endIndex] !== "\n") {
+      while (
+        endIndex < len &&
+        code[endIndex] !== quote &&
+        code[endIndex] !== "\n"
+      ) {
         endIndex++;
       }
       if (endIndex < len && code[endIndex] === quote) {
@@ -129,9 +133,7 @@ export function getPrologueDirectives(content: string): Set<string> {
  * when matching exported declarations.
  */
 export function stripComments(content: string): string {
-  return content
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/[^\n]*/g, "");
+  return content.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
 }
 
 /**
@@ -174,24 +176,28 @@ export async function detectRenderingType(
  * @returns Array of discovered HTTP methods
  */
 export function detectHttpMethods(content: string): HttpMethod[] {
-  const discovered: HttpMethod[] = [];
   const cleanCode = stripComments(content);
-
-  for (const method of HTTP_METHODS) {
-    // Matches:
-    // 1. export [async] function GET(...)
-    // 2. export const/let/var GET = ... or export const GET: Handler = ...
-    // 3. export { GET } or export { handle as GET }
-    const pattern = new RegExp(
-      `export\\s+(?:async\\s+)?(?:function\\s+${method}\\b|(?:const|let|var)\\s+${method}(?:\\s*:[^=]+)?\\s*=|\\{[^}]*\\b(?:as\\s+)?${method}\\b[^}]*\\})`,
-      "m",
-    );
-    if (pattern.test(cleanCode)) {
-      discovered.push(method);
+  const namedExports = new Set<string>();
+  for (const match of cleanCode.matchAll(/\bexport\s*\{([^}]*)\}/g)) {
+    for (const entry of match[1]!.split(",")) {
+      const specifier = entry.trim();
+      if (!specifier || specifier.startsWith("type ")) continue;
+      const name = specifier
+        .split(/\s+as\s+/)
+        .pop()!
+        .trim();
+      namedExports.add(name);
     }
   }
 
-  return discovered;
+  return HTTP_METHODS.filter((method) => {
+    // Direct declarations and named exports use the exported name, not the local alias.
+    const pattern = new RegExp(
+      `export\\s+(?:async\\s+)?(?:function\\s+${method}\\b|(?:const|let|var)\\s+${method}(?:\\s*:[^=]+)?\\s*=)`,
+      "m",
+    );
+    return namedExports.has(method) || pattern.test(cleanCode);
+  });
 }
 
 /**
@@ -320,11 +326,18 @@ export function parseRoutePath(relativePath: string): string {
       cleanedPart = "_" + cleanedPart.slice(3);
     }
 
-    // Strip intercepting route prefixes for the public URL mapping (match (..)(..) before (..))
-    cleanedPart = cleanedPart.replace(
-      /^(?:\(\.\.\)\(\.\.\)|\(\.\.\.\)|\(\.\.\)|\(\.\))/,
-      "",
-    );
+    // Match URL segments, not filesystem levels: groups and slots never count.
+    const interception = cleanedPart.match(
+      /^(\(\.\.\.\)|(?:\(\.\.\))+|\(\.\))/,
+    )?.[0];
+    if (interception) {
+      if (interception === "(...)") urlSegments.length = 0;
+      else if (interception !== "(.)") {
+        const levels = interception.length / "(..)".length;
+        urlSegments.splice(Math.max(0, urlSegments.length - levels));
+      }
+      cleanedPart = cleanedPart.slice(interception.length);
+    }
 
     urlSegments.push(cleanedPart);
   }

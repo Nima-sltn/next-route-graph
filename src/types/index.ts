@@ -147,7 +147,9 @@ export type OutputFormat =
   | "json"
   | "mermaid"
   | "dot"
-  | "markdown";
+  | "markdown"
+  | "html"
+  | "svg";
 
 /**
  * CLI command line options
@@ -158,6 +160,10 @@ export interface CLIOptions {
   mermaid?: boolean;
   dot?: boolean;
   markdown?: boolean;
+  svg?: boolean;
+  output?: string;
+  html?: boolean | string;
+  serve?: boolean | number | string;
   format?: OutputFormat;
   search?: string;
   check?: boolean;
