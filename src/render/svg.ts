@@ -28,13 +28,10 @@ export function renderSvg(result: AnalysisResult): string {
       const x = 18 + node.depth * 28;
       const y = 76 + index * rowHeight;
       const route = node.routes[0];
-      const color = !route
-        ? "#64748b"
-        : route.type === "route"
-          ? "#d8b4fe"
-          : route.rendering === "client"
-            ? "#67e8f9"
-            : "#a5b4fc";
+      let color = "#64748b";
+      if (route?.type === "route") color = "#d8b4fe";
+      else if (route?.rendering === "client") color = "#67e8f9";
+      else if (route) color = "#a5b4fc";
       const description =
         node.routes.length === 0
           ? "segment · no endpoint"
@@ -56,7 +53,10 @@ export function renderSvg(result: AnalysisResult): string {
         node.path,
         ...node.routes.map(
           (route) =>
-            `${route.file}${route.layoutChain?.length ? ` — layouts: ${route.layoutChain.join(" → ")}` : ""}`,
+            route.file +
+            (route.layoutChain?.length
+              ? " — layouts: " + route.layoutChain.join(" → ")
+              : ""),
         ),
       ].join("\n");
       const maxDescription = Math.floor((width - x - 50) / 7);

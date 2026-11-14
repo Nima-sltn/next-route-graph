@@ -258,11 +258,12 @@ export async function analyzeRoutes(
   }
 
   // Sort routes deterministically by URL path, then by file path for duplicate paths
-  const routes = discoveredRoutes.sort((a, b) => {
+  discoveredRoutes.sort((a, b) => {
     const cmp = a.path.localeCompare(b.path);
     return cmp !== 0 ? cmp : a.file.localeCompare(b.file);
   });
 
+  const routes = discoveredRoutes;
   const summary = getRoutesSummary(
     routes,
     totalLayouts,

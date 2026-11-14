@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.1] - 2026-11-14
+
+### Fixed
+- Addressed all 49 findings in the GitRoll scan of v1.2.0, including control-character filtering, redundant types and assertions, and regular expression cleanup.
+- Preserved HTML/XML escaping, route graph ordering, CLI exit behavior, and SDK type compatibility while simplifying parser, lint, and renderer functions.
+- Added regression coverage for control characters, directive scanning, and deterministic graph ordering.
+
 ## [1.2.0] - 2026-11-10
 
 ### Added

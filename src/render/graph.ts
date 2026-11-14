@@ -42,9 +42,12 @@ export function buildRouteGraph(routes: RouteEntry[]): RouteGraphNode[] {
   }
   const ordered: RouteGraphNode[] = [];
   const visit = (parentId: string) => {
-    for (const node of (children.get(parentId) ?? []).sort((a, b) =>
-      a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
-    )) {
+    const siblings = children.get(parentId) ?? [];
+    siblings.sort((a, b) => {
+      if (a.path === b.path) return 0;
+      return a.path < b.path ? -1 : 1;
+    });
+    for (const node of siblings) {
       ordered.push(node);
       visit(node.id);
     }
@@ -61,5 +64,7 @@ export function escapeMarkup(value: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;")
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");
+    .split("")
+    .filter((char) => char.charCodeAt(0) >= 32 || "\t\n\r".includes(char))
+    .join("");
 }

@@ -1,6 +1,6 @@
 {
   "name": "next-route-graph",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Inspect, lint, and visualize the structure of a Next.js App Router project from the terminal or SDK",
   "type": "module",
   "main": "./dist/index.js",

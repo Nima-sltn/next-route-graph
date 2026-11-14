@@ -1,5 +1,5 @@
 import pc from "picocolors";
-import { AnalysisResult } from "../types/index.js";
+import type { AnalysisResult, RouteEntry } from "../types/index.js";
 import type { OutputRenderer } from "./renderer.interface.js";
 
 /**
@@ -24,44 +24,10 @@ export function renderTree(result: AnalysisResult): string {
   lines.push(pc.dim("────────────────────────────────────────"));
 
   const routes = result.routes;
-  const maxPathLen = Math.max(
-    28,
-    ...routes.map((r) => r.path.length),
-  );
+  const maxPathLen = Math.max(28, ...routes.map((r) => r.path.length));
 
   routes.forEach((route, index) => {
-    const isLast = index === routes.length - 1;
-    const prefix = isLast ? "└── " : "├── ";
-    const pathStr = route.path.padEnd(maxPathLen, " ");
-    const fileStr = pc.dim(route.file.split("/").pop() || "");
-
-    const badges: string[] = [];
-
-    // HTTP Methods for API handlers
-    if (route.methods && route.methods.length > 0) {
-      badges.push(pc.magenta(`[${route.methods.join(", ")}]`));
-    }
-
-    // Rendering or Segment Type
-    if (route.rendering === "client") {
-      badges.push(pc.cyan("[client]"));
-    } else if (route.segmentType !== "static") {
-      badges.push(pc.yellow(`[${route.segmentType}]`));
-    }
-
-    // Parallel route slots
-    if (route.parallelSlots && route.parallelSlots.length > 0) {
-      badges.push(pc.blue(`[${route.parallelSlots.join(", ")}]`));
-    }
-
-    // Intercepting route indicator
-    if (route.intercepting) {
-      badges.push(pc.magenta(`[${route.intercepting}]`));
-    }
-
-    const badgeStr = badges.length > 0 ? `  ${badges.join(" ")}` : "";
-    const routeLine = `${pc.dim(prefix)}${pc.bold(pathStr)} ${fileStr}${badgeStr}`;
-    lines.push(routeLine);
+    lines.push(renderRouteLine(route, index === routes.length - 1, maxPathLen));
   });
 
   if (routes.length === 0) {
@@ -86,7 +52,10 @@ export function renderTree(result: AnalysisResult): string {
   if (result.summary.parallelRoutes && result.summary.parallelRoutes > 0) {
     lines.push(`${pc.dim("Parallel     ")}${result.summary.parallelRoutes}`);
   }
-  if (result.summary.interceptedRoutes && result.summary.interceptedRoutes > 0) {
+  if (
+    result.summary.interceptedRoutes &&
+    result.summary.interceptedRoutes > 0
+  ) {
     lines.push(`${pc.dim("Intercepted  ")}${result.summary.interceptedRoutes}`);
   }
 
@@ -97,12 +66,11 @@ export function renderTree(result: AnalysisResult): string {
     lines.push(pc.dim("────────────────────────────────────────"));
 
     for (const issue of result.lint.issues) {
-      const tag =
-        issue.severity === "error"
-          ? pc.red("✖ [error]")
-          : issue.severity === "warning"
-            ? pc.yellow("▲ [warning]")
-            : pc.blue("ℹ [info]");
+      const tag = {
+        error: pc.red("✖ [error]"),
+        warning: pc.yellow("▲ [warning]"),
+        info: pc.blue("ℹ [info]"),
+      }[issue.severity];
       lines.push(`${tag} ${pc.bold(issue.rule)}: ${issue.message}`);
       if (issue.hint) {
         lines.push(`  ${pc.dim("hint: " + issue.hint)}`);
@@ -121,4 +89,42 @@ export class TreeRenderer implements OutputRenderer {
   render(result: AnalysisResult): string {
     return renderTree(result);
   }
+}
+
+function renderRouteLine(
+  route: RouteEntry,
+  isLast: boolean,
+  maxPathLen: number,
+): string {
+  const prefix = isLast ? "└── " : "├── ";
+  const pathStr = route.path.padEnd(maxPathLen, " ");
+  const fileStr = pc.dim(route.file.split("/").pop() || "");
+
+  const badges: string[] = [];
+
+  // HTTP Methods for API handlers
+  if (route.methods && route.methods.length > 0) {
+    badges.push(pc.magenta(`[${route.methods.join(", ")}]`));
+  }
+
+  // Rendering or Segment Type
+  if (route.rendering === "client") {
+    badges.push(pc.cyan("[client]"));
+  } else if (route.segmentType !== "static") {
+    badges.push(pc.yellow(`[${route.segmentType}]`));
+  }
+
+  // Parallel route slots
+  if (route.parallelSlots && route.parallelSlots.length > 0) {
+    badges.push(pc.blue(`[${route.parallelSlots.join(", ")}]`));
+  }
+
+  // Intercepting route indicator
+  if (route.intercepting) {
+    badges.push(pc.magenta(`[${route.intercepting}]`));
+  }
+
+  const badgeStr = badges.length > 0 ? `  ${badges.join(" ")}` : "";
+  const routeLine = `${pc.dim(prefix)}${pc.bold(pathStr)} ${fileStr}${badgeStr}`;
+  return routeLine;
 }

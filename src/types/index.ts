@@ -2,10 +2,7 @@
  * Supported Next.js segment dynamics
  */
 export type SegmentType =
-  | "static"
-  | "dynamic"
-  | "catch-all"
-  | "optional-catch-all";
+  "static" | "dynamic" | "catch-all" | "optional-catch-all";
 
 /**
  * Next.js App Router special convention files
@@ -30,13 +27,7 @@ export type RenderingType = "client" | "server";
  * Standard HTTP methods supported in route handlers
  */
 export type HttpMethod =
-  | "GET"
-  | "POST"
-  | "PUT"
-  | "PATCH"
-  | "DELETE"
-  | "HEAD"
-  | "OPTIONS";
+  "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
 
 /**
  * Discovered file in the App Router tree
@@ -58,8 +49,8 @@ export interface RouteFile {
   rendering: RenderingType;
   methods?: HttpMethod[];
   hasServerActions?: boolean;
-  runtime?: "nodejs" | "edge" | string;
-  dynamicConfig?: "auto" | "force-dynamic" | "error" | "force-static" | string;
+  runtime?: string;
+  dynamicConfig?: string;
 }
 
 /**
@@ -73,8 +64,8 @@ export interface RouteEntry {
   rendering: RenderingType;
   methods?: HttpMethod[];
   hasServerActions?: boolean;
-  runtime?: "nodejs" | "edge" | string;
-  dynamicConfig?: "auto" | "force-dynamic" | "error" | "force-static" | string;
+  runtime?: string;
+  dynamicConfig?: string;
   files: RouteFile[];
   parallelSlots?: string[];
   intercepting?: string;
@@ -142,14 +133,7 @@ export interface AnalysisResult {
  * Output format types
  */
 export type OutputFormat =
-  | "tree"
-  | "flat"
-  | "json"
-  | "mermaid"
-  | "dot"
-  | "markdown"
-  | "html"
-  | "svg";
+  "tree" | "flat" | "json" | "mermaid" | "dot" | "markdown" | "html" | "svg";
 
 /**
  * CLI command line options

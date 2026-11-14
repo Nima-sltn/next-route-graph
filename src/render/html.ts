@@ -1,4 +1,4 @@
-import type { AnalysisResult } from "../types/index.js";
+import type { AnalysisResult, RouteEntry, LintIssue } from "../types/index.js";
 import { renderDot } from "./dot.js";
 import { renderFlat } from "./flat.js";
 import { buildRouteGraph, escapeMarkup as esc } from "./graph.js";
@@ -48,6 +48,12 @@ export function renderHtml(result: AnalysisResult): string {
     sources,
   }).replace(/</g, "\\u003c");
   const issues = result.lint?.issues ?? [];
+  const healthSummary = result.lint
+    ? result.lint.errorCount +
+      " errors · " +
+      result.lint.warningCount +
+      " warnings"
+    : "No lint results available";
   const stats = [
     ["Endpoints", result.routes.length],
     ["Server", result.summary.server],
@@ -472,11 +478,11 @@ footer {
 <section id="routes" class="panel card" hidden aria-label="Route table">
   <div class="toolbar"><h2>Endpoints</h2><button id="csv">Download filtered CSV</button></div>
   <div class="table-wrap"><table><caption>Every endpoint source is retained, including parallel and intercepted variants.</caption><thead><tr><th scope="col">Path</th><th scope="col">Type</th><th scope="col">Rendering</th><th scope="col">Methods / segment</th><th scope="col">Source file</th></tr></thead><tbody>
-  ${result.routes.map((route, index) => `<tr data-route-index="${index}"><td><button data-select-route="${index}">${esc(route.path)}</button></td><td><span class="badge ${route.type}">${route.type}</span></td><td><span class="badge ${route.rendering}">${route.rendering}</span></td><td>${esc(route.methods?.join(", ") || route.segmentType)}${route.parallelSlots?.map((slot) => `<span class="badge">${esc(slot)}</span>`).join("") ?? ""}${route.intercepting ? '<span class="badge">intercepted</span>' : ""}</td><td><code>${esc(route.file)}</code></td></tr>`).join("")}
+  ${result.routes.map(renderRouteRow).join("")}
   </tbody></table></div><p id="no-matches" class="muted"${result.routes.length ? " hidden" : ""}>No matching endpoints. Clear the search or choose another filter.</p>
 </section>
-<section id="health" class="panel card" hidden aria-label="Route health"><h2>Project health</h2><p class="muted">${result.lint ? `${result.lint.errorCount} errors · ${result.lint.warningCount} warnings` : "No lint results available"}. Diagnostics cover the full project, even when routes are filtered.</p>
-${issues.length ? issues.map((issue) => `<article class="issue ${issue.severity}"><h3>${esc(issue.rule)} <span class="badge">${issue.severity}</span></h3><p>${esc(issue.message)}</p>${issue.filePath || issue.routePath ? `<p><code>${esc(issue.filePath ?? issue.routePath ?? "")}</code></p>` : ""}${issue.hint ? `<p class="muted">${esc(issue.hint)}</p>` : ""}</article>`).join("") : `<p>${result.lint ? "No routing issues found by the available static checks." : "Run route linting to populate this section."}</p>`}
+<section id="health" class="panel card" hidden aria-label="Route health"><h2>Project health</h2><p class="muted">${healthSummary}. Diagnostics cover the full project, even when routes are filtered.</p>
+${renderHealthIssues(issues, Boolean(result.lint))}
 </section>
 <section id="exports" class="panel card" hidden aria-label="Export routes"><h2>Share the route map</h2><p class="muted">SVG is a rendered vector image. Mermaid and DOT are source formats for documentation and graph tools. Downloads contain all endpoints in this report; CSV follows the current filter.</p>
   <div class="toolbar"><label for="export-format">Format</label><select id="export-format"><option value="svg">SVG image</option><option value="mermaid">Mermaid source</option><option value="dot">Graphviz DOT source</option><option value="markdown">Markdown table</option><option value="json">JSON</option><option value="flat">Flat paths</option><option value="tree">Terminal tree (plain text)</option></select><button id="download">Download</button><button id="copy">Copy source</button></div>
@@ -720,4 +726,28 @@ export class HtmlRenderer implements OutputRenderer {
   render(result: AnalysisResult): string {
     return renderHtml(result);
   }
+}
+
+function renderRouteRow(route: RouteEntry, index: number): string {
+  const slots = (route.parallelSlots ?? [])
+    .map((slot) => '<span class="badge">' + esc(slot) + "</span>")
+    .join("");
+  return `<tr data-route-index="${index}"><td><button data-select-route="${index}">${esc(route.path)}</button></td><td><span class="badge ${route.type}">${route.type}</span></td><td><span class="badge ${route.rendering}">${route.rendering}</span></td><td>${esc(route.methods?.join(", ") || route.segmentType)}${slots}${route.intercepting ? '<span class="badge">intercepted</span>' : ""}</td><td><code>${esc(route.file)}</code></td></tr>`;
+}
+
+function renderHealthIssues(issues: LintIssue[], hasLint: boolean): string {
+  if (issues.length) return issues.map(renderHealthIssue).join("");
+  const message = hasLint
+    ? "No routing issues found by the available static checks."
+    : "Run route linting to populate this section.";
+  return "<p>" + message + "</p>";
+}
+
+function renderHealthIssue(issue: LintIssue): string {
+  const location = issue.filePath ?? issue.routePath;
+  const locationMarkup = location
+    ? "<p><code>" + esc(location) + "</code></p>"
+    : "";
+  const hint = issue.hint ? '<p class="muted">' + esc(issue.hint) + "</p>" : "";
+  return `<article class="issue ${issue.severity}"><h3>${esc(issue.rule)} <span class="badge">${issue.severity}</span></h3><p>${esc(issue.message)}</p>${locationMarkup}${hint}</article>`;
 }

@@ -1,4 +1,4 @@
-import { AnalysisResult } from "../types/index.js";
+import type { AnalysisResult, RouteEntry } from "../types/index.js";
 import type { OutputRenderer } from "./renderer.interface.js";
 
 /**
@@ -27,23 +27,12 @@ export function renderMarkdown(result: AnalysisResult): string {
   );
   lines.push("");
 
-  lines.push("| Route Path | Type | Segment | Rendering | Methods / Details | File |");
+  lines.push(
+    "| Route Path | Type | Segment | Rendering | Methods / Details | File |",
+  );
   lines.push("| :--- | :--- | :--- | :--- | :--- | :--- |");
 
-  for (const route of result.routes) {
-    const methods =
-      route.methods && route.methods.length > 0
-        ? `\`${escapeCell(route.methods.join(", "))}\``
-        : "-";
-    const segment = `\`${escapeCell(route.segmentType)}\``;
-    const rendering =
-      route.rendering === "client" ? "**Client**" : "Server";
-    const file = `\`${escapeCell(route.file)}\``;
-
-    lines.push(
-      `| \`${escapeCell(route.path)}\` | ${route.type} | ${segment} | ${rendering} | ${methods} | ${file} |`,
-    );
-  }
+  for (const route of result.routes) lines.push(renderRouteRow(route));
 
   if (result.routes.length === 0) {
     lines.push("| *(No routes discovered)* | - | - | - | - | - |");
@@ -56,12 +45,11 @@ export function renderMarkdown(result: AnalysisResult): string {
     lines.push("| Severity | Rule | Message | File / Location |");
     lines.push("| :--- | :--- | :--- | :--- |");
     for (const issue of result.lint.issues) {
-      const badge =
-        issue.severity === "error"
-          ? "🛑 Error"
-          : issue.severity === "warning"
-            ? "⚠️ Warning"
-            : "ℹ️ Info";
+      const badge = {
+        error: "🛑 Error",
+        warning: "⚠️ Warning",
+        info: "ℹ️ Info",
+      }[issue.severity];
       const loc = issue.filePath ? `\`${escapeCell(issue.filePath)}\`` : "-";
       lines.push(
         `| ${badge} | \`${escapeCell(issue.rule)}\` | ${escapeCell(issue.message.replace(/\n/g, " "))} | ${loc} |`,
@@ -77,4 +65,16 @@ export class MarkdownRenderer implements OutputRenderer {
   render(result: AnalysisResult): string {
     return renderMarkdown(result);
   }
+}
+
+function renderRouteRow(route: RouteEntry): string {
+  const methods =
+    route.methods && route.methods.length > 0
+      ? `\`${escapeCell(route.methods.join(", "))}\``
+      : "-";
+  const segment = `\`${escapeCell(route.segmentType)}\``;
+  const rendering = route.rendering === "client" ? "**Client**" : "Server";
+  const file = `\`${escapeCell(route.file)}\``;
+
+  return `| \`${escapeCell(route.path)}\` | ${route.type} | ${segment} | ${rendering} | ${methods} | ${file} |`;
 }

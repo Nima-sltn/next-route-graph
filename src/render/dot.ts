@@ -55,12 +55,11 @@ export function renderDot(result: AnalysisResult): string {
     }
 
     const labelText = labels.map(escapeDot).join("\\n");
-    const color =
-      route?.rendering === "client"
-        ? 'fillcolor="#ecfeff", color="#06b6d4"'
-        : route?.type === "route"
-          ? 'fillcolor="#fdf4ff", color="#c026d3"'
-          : 'fillcolor="#f8fafc", color="#64748b"';
+    let color = 'fillcolor="#f8fafc", color="#64748b"';
+    if (route?.rendering === "client")
+      color = 'fillcolor="#ecfeff", color="#06b6d4"';
+    else if (route?.type === "route")
+      color = 'fillcolor="#fdf4ff", color="#c026d3"';
 
     lines.push(`  ${id} [label="${labelText}", ${color}];`);
   });

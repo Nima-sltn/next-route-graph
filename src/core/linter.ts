@@ -45,6 +45,40 @@ export function lintRoutes(
     dirGroup.set(dir, existing);
   }
 
+  checkRootLayout(routes, files, issues);
+  checkPageRouteConflict(dirGroup, issues);
+  checkDuplicatePaths(routes, issues);
+  checkDynamicCollisions(routes, issues);
+  checkSlotFallbacks(files, dirGroup, issues);
+  checkGlobalErrorLocation(files, issues);
+
+  const errorCount = issues.filter((i) => i.severity === "error").length;
+  const warningCount = issues.filter((i) => i.severity === "warning").length;
+  const infoCount = issues.filter((i) => i.severity === "info").length;
+
+  return {
+    issues,
+    hasErrors: errorCount > 0,
+    errorCount,
+    warningCount,
+    infoCount,
+  };
+}
+
+function branchKey(route: RouteEntry) {
+  const parts = route.file.replace(/\\/g, "/").split("/");
+  let slot = -1;
+  parts.forEach((part, index) => {
+    if (part.startsWith("@")) slot = index;
+  });
+  return slot < 0 ? "" : parts.slice(0, slot + 1).join("/");
+}
+
+function checkRootLayout(
+  routes: RouteEntry[],
+  files: DiscoveredFile[],
+  issues: LintIssue[],
+): void {
   // -------------------------------------------------------------
   // Rule 1: Root Layout Check (require-root-layout)
   // -------------------------------------------------------------
@@ -73,7 +107,12 @@ export function lintRoutes(
       });
     }
   }
+}
 
+function checkPageRouteConflict(
+  dirGroup: Map<string, DiscoveredFile[]>,
+  issues: LintIssue[],
+): void {
   // -------------------------------------------------------------
   // Rule 2: Page and Route Handler Conflict (no-page-route-conflict)
   // -------------------------------------------------------------
@@ -96,20 +135,14 @@ export function lintRoutes(
       });
     }
   }
+}
 
+function checkDuplicatePaths(routes: RouteEntry[], issues: LintIssue[]): void {
   // -------------------------------------------------------------
   // Rule 3: Exact URL Collision across Route Groups (no-duplicate-paths)
   // -------------------------------------------------------------
   // Slots render alongside children, and intercepted pages intentionally share URLs.
   // Collisions only apply within the same parallel-slot branch.
-  const branchKey = (route: RouteEntry) => {
-    const parts = route.file.replace(/\\/g, "/").split("/");
-    let slot = -1;
-    parts.forEach((part, index) => {
-      if (part.startsWith("@")) slot = index;
-    });
-    return slot < 0 ? "" : parts.slice(0, slot + 1).join("/");
-  };
   const publicRoutes = routes.filter((route) => !route.intercepting);
   const pathToFileMap = new Map<string, RouteEntry[]>();
   for (const route of publicRoutes) {
@@ -120,7 +153,7 @@ export function lintRoutes(
   }
 
   for (const entries of pathToFileMap.values()) {
-    const routePath = entries[0]!.path;
+    const routePath = entries[0].path;
     const fileList = entries.map((route) => route.file);
     if (fileList.length > 1) {
       issues.push({
@@ -132,7 +165,13 @@ export function lintRoutes(
       });
     }
   }
+}
 
+function checkDynamicCollisions(
+  routes: RouteEntry[],
+  issues: LintIssue[],
+): void {
+  const publicRoutes = routes.filter((route) => !route.intercepting);
   // -------------------------------------------------------------
   // Rule 4: Dynamic Segment Collisions (no-route-collisions)
   // -------------------------------------------------------------
@@ -140,7 +179,7 @@ export function lintRoutes(
   for (const route of publicRoutes) {
     const segments = route.path.split("/").filter(Boolean);
     for (let depth = 1; depth <= segments.length; depth++) {
-      if (!segments[depth - 1]!.startsWith("[")) continue;
+      if (!segments[depth - 1].startsWith("[")) continue;
       const prefix = "/" + segments.slice(0, depth).join("/");
       const key = JSON.stringify([branchKey(route), createPatternKey(prefix)]);
       const existing = patternMap.get(key) ?? new Set<string>();
@@ -151,7 +190,7 @@ export function lintRoutes(
 
   for (const patternPaths of patternMap.values()) {
     const uniquePaths = [...patternPaths];
-    const pattern = createPatternKey(uniquePaths[0]!);
+    const pattern = createPatternKey(uniquePaths[0]);
     if (uniquePaths.length > 1) {
       issues.push({
         rule: "no-route-collisions",
@@ -161,7 +200,13 @@ export function lintRoutes(
       });
     }
   }
+}
 
+function checkSlotFallbacks(
+  files: DiscoveredFile[],
+  dirGroup: Map<string, DiscoveredFile[]>,
+  issues: LintIssue[],
+): void {
   // -------------------------------------------------------------
   // Rule 5: Parallel Route Slot Fallback (parallel-missing-default)
   // -------------------------------------------------------------
@@ -192,7 +237,12 @@ export function lintRoutes(
       });
     }
   }
+}
 
+function checkGlobalErrorLocation(
+  files: DiscoveredFile[],
+  issues: LintIssue[],
+): void {
   // -------------------------------------------------------------
   // Rule 6: Global Error Boundary Location (global-error-location)
   // -------------------------------------------------------------
@@ -211,16 +261,4 @@ export function lintRoutes(
       }
     }
   }
-
-  const errorCount = issues.filter((i) => i.severity === "error").length;
-  const warningCount = issues.filter((i) => i.severity === "warning").length;
-  const infoCount = issues.filter((i) => i.severity === "info").length;
-
-  return {
-    issues,
-    hasErrors: errorCount > 0,
-    errorCount,
-    warningCount,
-    infoCount,
-  };
 }

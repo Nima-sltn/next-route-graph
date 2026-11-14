@@ -1,6 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { HttpMethod, RenderingType, SpecialFileType } from "../types/index.js";
+import {
+  HttpMethod,
+  RenderingType,
+  SpecialFileType,
+  SegmentType,
+} from "../types/index.js";
 
 /**
  * Recognizable Next.js App Router special file names without extensions
@@ -58,74 +63,55 @@ export function parseSpecialFileType(fileName: string): SpecialFileType | null {
  */
 export function getPrologueDirectives(content: string): Set<string> {
   const directives = new Set<string>();
-  let code = content.replace(/^#![^\n]*\n/, ""); // Strip shebang if present
-  let index = 0;
-  const len = code.length;
+  const code = content.replace(/^#![^\n]*\n/, "");
+  let index = skipTrivia(code, 0);
+  while (index < code.length) {
+    const directive = readDirective(code, index);
+    if (!directive) break;
+    directives.add(directive.value);
+    index = skipTrivia(code, directive.end);
+  }
+  return directives;
+}
 
-  while (index < len) {
-    // Skip whitespace
-    while (index < len && /\s/.test(code[index]!)) {
+function skipTrivia(code: string, start: number): number {
+  let index = start;
+  while (index < code.length) {
+    if (/\s/.test(code[index])) {
       index++;
-    }
-    if (index >= len) break;
-
-    // Skip single-line comments
-    if (code[index] === "/" && code[index + 1] === "/") {
-      index += 2;
-      while (index < len && code[index] !== "\n") {
-        index++;
-      }
       continue;
     }
-
-    // Skip multi-line comments
-    if (code[index] === "/" && code[index + 1] === "*") {
-      index += 2;
-      while (index < len && !(code[index] === "*" && code[index + 1] === "/")) {
-        index++;
-      }
-      if (index < len) {
-        index += 2; // skip */
-      }
+    if (code.startsWith("//", index)) {
+      const end = code.indexOf("\n", index + 2);
+      index = end < 0 ? code.length : end + 1;
       continue;
     }
-
-    // Check string literal directive: 'use ...' or "use ..."
-    const char = code[index];
-    if (char === '"' || char === "'") {
-      const quote = char;
-      let endIndex = index + 1;
-      while (
-        endIndex < len &&
-        code[endIndex] !== quote &&
-        code[endIndex] !== "\n"
-      ) {
-        endIndex++;
-      }
-      if (endIndex < len && code[endIndex] === quote) {
-        const strVal = code.slice(index + 1, endIndex);
-        let after = endIndex + 1;
-        while (after < len && (code[after] === " " || code[after] === "\t")) {
-          after++;
-        }
-        if (
-          after >= len ||
-          code[after] === ";" ||
-          code[after] === "\n" ||
-          code[after] === "\r"
-        ) {
-          directives.add(strVal);
-          index = code[after] === ";" ? after + 1 : after;
-          continue;
-        }
-      }
+    if (code.startsWith("/*", index)) {
+      const end = code.indexOf("*/", index + 2);
+      index = end < 0 ? code.length : end + 2;
+      continue;
     }
-
-    // Any non-directive token ends the directive prologue
     break;
   }
+  return index;
+}
 
-  return directives;
+function readDirective(
+  code: string,
+  index: number,
+): { value: string; end: number } | undefined {
+  const quote = code[index];
+  if (quote !== '"' && quote !== "'") return;
+  let end = index + 1;
+  while (end < code.length && code[end] !== quote && code[end] !== "\n") end++;
+  if (code[end] !== quote) return;
+  let after = end + 1;
+  while (code[after] === " " || code[after] === "\t") after++;
+  if (after < code.length && !";\n\r".includes(code[after])) return;
+  return {
+    value: code.slice(index + 1, end),
+    end: code[after] === ";" ? after + 1 : after,
+  };
 }
 
 /**
@@ -179,14 +165,14 @@ export function detectHttpMethods(content: string): HttpMethod[] {
   const cleanCode = stripComments(content);
   const namedExports = new Set<string>();
   for (const match of cleanCode.matchAll(/\bexport\s*\{([^}]*)\}/g)) {
-    for (const entry of match[1]!.split(",")) {
+    for (const entry of match[1].split(",")) {
       const specifier = entry.trim();
       if (!specifier || specifier.startsWith("type ")) continue;
       const name = specifier
         .split(/\s+as\s+/)
-        .pop()!
-        .trim();
-      namedExports.add(name);
+        .pop()
+        ?.trim();
+      if (name) namedExports.add(name);
     }
   }
 
@@ -216,7 +202,7 @@ export function detectServerActions(content: string): boolean {
   const cleanCode = stripComments(content);
   // Matches inline server actions: async function / function / arrow function body starting with 'use server'
   const inlinePattern =
-    /(?:async\s+function|function|\=>)\s*[^{]*\{[\s\r\n]*['"]use server['"]/m;
+    /(?:async\s+function|function|=>)\s*[^{]*\{\s*['"]use server['"]/m;
   return inlinePattern.test(cleanCode);
 }
 
@@ -238,22 +224,21 @@ export function detectRouteConfig(content: string): {
 
   const cleanCode = stripComments(content);
 
-  const runtimeMatch = cleanCode.match(
-    /export\s+(?:const|let)\s+runtime(?:\s*:\s*[^=]+)?\s*=\s*['"](nodejs|edge)['"]/,
-  );
+  const runtimeMatch =
+    /export\s+(?:const|let)\s+runtime(?:\s*:\s*[^=]+)?\s*=\s*['"](nodejs|edge)['"]/.exec(
+      cleanCode,
+    );
   if (runtimeMatch?.[1]) {
     result.runtime = runtimeMatch[1] as "nodejs" | "edge";
   }
 
-  const dynamicMatch = cleanCode.match(
-    /export\s+(?:const|let)\s+dynamic(?:\s*:\s*[^=]+)?\s*=\s*['"](auto|force-dynamic|error|force-static)['"]/,
-  );
+  const dynamicMatch =
+    /export\s+(?:const|let)\s+dynamic(?:\s*:\s*[^=]+)?\s*=\s*['"](auto|force-dynamic|error|force-static)['"]/.exec(
+      cleanCode,
+    );
   if (dynamicMatch?.[1]) {
     result.dynamicConfig = dynamicMatch[1] as
-      | "auto"
-      | "force-dynamic"
-      | "error"
-      | "force-static";
+      "auto" | "force-dynamic" | "error" | "force-static";
   }
 
   return result;
@@ -278,9 +263,8 @@ export function extractRouteMetadata(relativePath: string): {
       slots.push(part);
     }
     // Match (..)(..) before (..)
-    const interceptMatch = part.match(
-      /^(\(\.\.\)\(\.\.\)|\(\.\.\.\)|\(\.\.\)|\(\.\))/,
-    );
+    const interceptMatch =
+      /^(\(\.\.\)\(\.\.\)|\(\.\.\.\)|\(\.\.\)|\(\.\))/.exec(part);
     if (interceptMatch && !intercepting) {
       intercepting = interceptMatch[1];
     }
@@ -306,18 +290,7 @@ export function parseRoutePath(relativePath: string): string {
   for (const part of parts) {
     if (!part) continue;
 
-    // Ignore Route Groups like (marketing) or (shop)
-    if (part.startsWith("(") && part.endsWith(")")) {
-      const inner = part.slice(1, -1);
-      if (!inner.startsWith(".") && inner !== "...") {
-        continue;
-      }
-    }
-
-    // Ignore parallel route slot directories like @analytics or @auth
-    if (part.startsWith("@")) {
-      continue;
-    }
+    if (isInvisibleSegment(part)) continue;
 
     let cleanedPart = part;
 
@@ -327,8 +300,8 @@ export function parseRoutePath(relativePath: string): string {
     }
 
     // Match URL segments, not filesystem levels: groups and slots never count.
-    const interception = cleanedPart.match(
-      /^(\(\.\.\.\)|(?:\(\.\.\))+|\(\.\))/,
+    const interception = /^(\(\.\.\.\)|(?:\(\.\.\))+|\(\.\))/.exec(
+      cleanedPart,
     )?.[0];
     if (interception) {
       if (interception === "(...)") urlSegments.length = 0;
@@ -352,9 +325,7 @@ export function parseRoutePath(relativePath: string): string {
  * @param routePath - Normalized route path
  * @returns 'optional-catch-all' | 'catch-all' | 'dynamic' | 'static'
  */
-export function getSegmentType(
-  routePath: string,
-): "static" | "dynamic" | "catch-all" | "optional-catch-all" {
+export function getSegmentType(routePath: string): SegmentType {
   if (routePath.includes("[[...")) {
     return "optional-catch-all";
   }
@@ -368,4 +339,11 @@ export function getSegmentType(
   }
 
   return "static";
+}
+
+function isInvisibleSegment(part: string): boolean {
+  if (part.startsWith("@")) return true;
+  if (!part.startsWith("(") || !part.endsWith(")")) return false;
+  const inner = part.slice(1, -1);
+  return !inner.startsWith(".") && inner !== "...";
 }
